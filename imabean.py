@@ -1,6 +1,10 @@
 import numpy as np
 import cv2
 import random
+import sys
+
+RUN_MODE = 'run'
+EDIT_MODE = 'edit'
 
 NONE = 0
 DRAGGING_FRAME = 1
@@ -23,29 +27,55 @@ SCROLLER_END_X = SCREEN_WIDTH - SCROLLER_MARGIN - SCROLLER_WIDTH
 FIRST_RECT_INDEX = 0
 SECOND_RECT_INDEX = 1
 
-def drawFaceRect(frame, rectKeyFrame, color):
-    start = (rectKeyFrame['position']['x'], rectKeyFrame['position']['y'])
-    end = (rectKeyFrame['position']['x'] + rectKeyFrame['size']['width'], rectKeyFrame['position']['y'] + rectKeyFrame['size']['height'])
+def drawFaceRect(frame, rectKeyFrame, color, face):
+    global cameraImage
+
+    start = (int(rectKeyFrame['position']['x']), int(rectKeyFrame['position']['y']))
+    end = (int(rectKeyFrame['position']['x'] + rectKeyFrame['size']['width']), int(rectKeyFrame['position']['y'] + rectKeyFrame['size']['height']))
 
     cv2.rectangle(frame, start, end, color ,3)
+
+    # Draw crop from camera
+    # if (face is not None):
+    #     face = cv2.resize(face, (rectKeyFrame['size']['width'], rectKeyFrame['size']['height']), interpolation = cv2.INTER_AREA)
+    #     rows, cols = face.shape[:2]
+
+    #     print int(rectKeyFrame['position']['y']), ':', int(rectKeyFrame['position']['y'])+rows
+    #     print int(rectKeyFrame['position']['x']), ':', int(rectKeyFrame['position']['x'])+cols
+    #     print rows, cols
+    #     frame[int(rectKeyFrame['position']['y']):int(rectKeyFrame['position']['y'])+rows][int(rectKeyFrame['position']['x']):int(rectKeyFrame['position']['x'])+cols] = face
+        #M = np.float32([[1,0,rectKeyFrame['position']['x']],[0,1,rectKeyFrame['position']['y']]])
+        #face = cv2.warpAffine(face, M, (cols, rows))
 
     #text = 'Single' if rectKeyFrame['transition'] == SINGLE_FRAME else 'Linear'
     #y = 150 if rectKeyFrame['rectIndex'] == 1 else 180
     #cv2.putText(frame, text, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
-def drawFrameFaceRect(frame, rectIndex, color):
-    global overlayHash
+def interpolateRects(firstRect, firstFrame, secondRect, secondFrame, currFrame):
+    framesDiff = secondFrame - firstFrame
+    ratio = float(currFrame - firstFrame) / framesDiff;
+    return {
+        'position': {'x': firstRect['position']['x'] + (secondRect['position']['x'] - firstRect['position']['x']) * ratio, 'y': firstRect['position']['y'] + (secondRect['position']['y'] - firstRect['position']['y']) * ratio },
+        'size': {'width': secondRect['size']['width'], 'height': secondRect['size']['height']}
+    }
+
+def drawFrameFaceRect(frame, rectIndex, color, face):
+    global overlayHash, currFrameIndex
 
     rectKeyFrame = overlayHash.get(getKey(rectIndex, currFrameIndex))
 
     if (rectKeyFrame != None):
-        drawFaceRect(frame, rectKeyFrame, color)
+        drawFaceRect(frame, rectKeyFrame, color, face)
+        # TODO: Draw solid
     else:
+        # TODO: Draw interpolated!
         lastKeyFrame = getLastKeyFrame()
         if lastKeyFrame != None:
             lastKeyFrameRect = overlayHash.get(getKey(rectIndex, lastKeyFrame));
-            if lastKeyFrameRect != None:
-                drawFaceRect(frame, lastKeyFrameRect, color)
+            nextKeyFrame = getNextKeyFrame()
+            if nextKeyFrame != None:
+                nextKeyFrameRect = overlayHash.get(getKey(rectIndex, nextKeyFrame));
+                drawFaceRect(frame, interpolateRects(lastKeyFrameRect, lastKeyFrame, nextKeyFrameRect, nextKeyFrame, currFrameIndex), color, face)
 
 def refreshScroller(frame):
     global frameScrollerX, currFrameIndex, framesNum, overlayHash, keyFrames
@@ -56,8 +86,8 @@ def refreshScroller(frame):
 
     cv2.rectangle(frame,(int(frameScrollerX), FRAME_SCROLLER_Y),(int(frameScrollerX) + SCROLLER_WIDTH, FRAME_SCROLLER_Y + SCROLLER_HEIGHT),(0,126,0),3)
 
-    drawFrameFaceRect(frame, FIRST_RECT_INDEX, (255, 0, 0))
-    drawFrameFaceRect(frame, SECOND_RECT_INDEX, (0, 0, 255))
+    drawFrameFaceRect(frame, FIRST_RECT_INDEX, (255, 0, 0), None)
+    drawFrameFaceRect(frame, SECOND_RECT_INDEX, (0, 0, 255), None)
 
 def setFrameByScroller():
     global currFrameIndex, framesNum
@@ -114,30 +144,31 @@ def handleDrawRectEnd(x, y):
     keyFrame['size']['height'] = y - startY
 
 def onMouseMove(event, x, y, flags, param):
-    global editorMode, frame, frameScrollerX, dragStartX, dragStartScrollerX
+    global editorMode, frame, frameScrollerX, dragStartX, dragStartScrollerX, scriptMode
 
-    if event == cv2.EVENT_LBUTTONDOWN:
-        if (y >= FRAME_SCROLLER_Y):
-            dragStartX = x
-            dragStartScrollerX = frameScrollerX
-            editorMode = DRAGGING_FRAME
-        else:
-            editorMode = DRAWING_RECT
-            handleDrawRectStart(x, y)
+    if scriptMode == EDIT_MODE:
+        if event == cv2.EVENT_LBUTTONDOWN:
+            if (y >= FRAME_SCROLLER_Y):
+                dragStartX = x
+                dragStartScrollerX = frameScrollerX
+                editorMode = DRAGGING_FRAME
+            else:
+                editorMode = DRAWING_RECT
+                handleDrawRectStart(x, y)
 
-    elif event == cv2.EVENT_MOUSEMOVE:
-        if (editorMode == DRAGGING_FRAME):
-            updateFrameScrollerX(dragStartScrollerX + x - dragStartX)
-        elif (editorMode == DRAWING_RECT):
-            handleDrawRectEnd(x, y)
+        elif event == cv2.EVENT_MOUSEMOVE:
+            if (editorMode == DRAGGING_FRAME):
+                updateFrameScrollerX(dragStartScrollerX + x - dragStartX)
+            elif (editorMode == DRAWING_RECT):
+                handleDrawRectEnd(x, y)
 
-    elif event == cv2.EVENT_LBUTTONUP:
-        if (editorMode == DRAGGING_FRAME):
-            editorMode = NONE
-            updateFrameScrollerX(dragStartScrollerX + x - dragStartX)
-        elif (editorMode == DRAWING_RECT):
-            handleDrawRectEnd(x, y)
-            editorMode = NONE
+        elif event == cv2.EVENT_LBUTTONUP:
+            if (editorMode == DRAGGING_FRAME):
+                editorMode = NONE
+                updateFrameScrollerX(dragStartScrollerX + x - dragStartX)
+            elif (editorMode == DRAWING_RECT):
+                handleDrawRectEnd(x, y)
+                editorMode = NONE
 
 def getKey(index, frame):
     return str(frame) + str(index)
@@ -170,11 +201,19 @@ def getLastKeyFrame():
 
     return None
 
+def getNextKeyFrame():
+    global currFrameIndex, keyFrames
+
+    for i in range(len(keyFrames)):
+        if (keyFrames[i] > currFrameIndex):
+            return keyFrames[i]
+
+    return None
+
 def setFrameToLastKeyFrame():
     global currFrameIndex
 
     lastKeyFrame = getLastKeyFrame()
-    print 'Last key frame: ', lastKeyFrame
     if (lastKeyFrame != None):
         currFrameIndex = lastKeyFrame
 
@@ -184,37 +223,47 @@ def drawCurrColor():
     color = (255, 0, 0) if currRectIndex == 0 else (0, 0, 255)
     cv2.circle(frame, (30, 150), 15, color ,3)
 
-overlayDef = [
-    {
-        'rectIndex': 0,
-        'position': {'x': 200, 'y': 200},
-        'size': {'width': 100, 'height': 100},
-        'keyFrameIndex': 0#,
-        #'transition': SINGLE_FRAME
-    },
-    {
-        'rectIndex': 1,
-        'position': {'x': 350, 'y': 350},
-        'size': {'width': 50, 'height': 50},
-        'keyFrameIndex': 0#,
-        #'transition': SINGLE_FRAME
-    },
+def getFaces():
+    global face1, face2
 
-    {
-        'rectIndex': 0,
-        'position': {'x': 200, 'y': 300},
-        'size': {'width': 100, 'height': 100},
-        'keyFrameIndex': 50#,
-        #'transition': LINEAR_MOVEMENT
-    },
-    {
-        'rectIndex': 1,
-        'position': {'x': 500, 'y': 500},
-        'size': {'width': 50, 'height': 50},
-        'keyFrameIndex': 50#,
-        #'transition': LINEAR_MOVEMENT
-    }
+    face1 = cameraImage[0:100, 0:100]
+    face2 = cameraImage[300:400, 300:400]
+
+overlayDef = [
+    # {
+    #     'rectIndex': 0,
+    #     'position': {'x': 200, 'y': 200},
+    #     'size': {'width': 100, 'height': 100},
+    #     'keyFrameIndex': 0#,
+    #     #'transition': SINGLE_FRAME
+    # },
+    # {
+    #     'rectIndex': 1,
+    #     'position': {'x': 350, 'y': 350},
+    #     'size': {'width': 50, 'height': 50},
+    #     'keyFrameIndex': 0#,
+    #     #'transition': SINGLE_FRAME
+    # },
+
+    # {
+    #     'rectIndex': 0,
+    #     'position': {'x': 200, 'y': 300},
+    #     'size': {'width': 100, 'height': 100},
+    #     'keyFrameIndex': 50#,
+    #     #'transition': LINEAR_MOVEMENT
+    # },
+    # {
+    #     'rectIndex': 1,
+    #     'position': {'x': 500, 'y': 500},
+    #     'size': {'width': 50, 'height': 50},
+    #     'keyFrameIndex': 50#,
+    #     #'transition': LINEAR_MOVEMENT
+    # }
 ]
+
+scriptMode = RUN_MODE
+if (len(sys.argv) == 2):
+    scriptMode = sys.argv[1]
 
 startX = 0
 startY = 0
@@ -227,8 +276,12 @@ dragStartX = 0
 dragStartScrollerX = SCROLLER_START_X
 editorMode = NONE
 
-cap = cv2.VideoCapture('/Users/idankimel/Dev/ScienceMuseum/Bean/master_converted.mp4')
+cap = cv2.VideoCapture('./master_converted.mp4')
 framesNum = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+cameraImage = cv2.imread("camera-stream.jpg")
+face1 = None
+face2 = None
 
 window_name = 'projector'
 cv2.namedWindow(window_name)
@@ -239,57 +292,65 @@ currRectIndex = 0
 currFrameIndex = 0
 frameScrollerX = float(SCROLLER_START_X)
 
-firstX = random.randint(0, 1920 - 100)
-firstY = random.randint(0, 1080 - 200)
-
-secondX = random.randint(0, 1920 - 100)
-secondY = random.randint(0, 1080 - 200)
-
 nextFrame = True
 
 while True:
-    cap.set(cv2.CAP_PROP_POS_FRAMES, currFrameIndex)
+    if scriptMode == EDIT_MODE:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, currFrameIndex)
+
     ret, frame = cap.read()
 
-    refreshScroller(frame)
+    if scriptMode == EDIT_MODE:
+        refreshScroller(frame)
+        drawCurrColor()
 
-    drawCurrColor()
+    if scriptMode == RUN_MODE:
+        getFaces()
+        drawFrameFaceRect(frame, FIRST_RECT_INDEX, (255, 0, 0), face1)
+        drawFrameFaceRect(frame, SECOND_RECT_INDEX, (0, 0, 255), face2)
 
-    # First face, randomize coordinate change for testing
-    #firstX += random.randint(-1, 1)
-    #firstY += random.randint(-1, 1)
-    #frame = cv2.rectangle(frame,(firstX, firstY),(firstX + 100, firstY + 200),(255,0,0),3)
+        # Get current face positions
 
-    # Second face, randomize coordinate change for testing
-    #secondX += random.randint(-1, 1)
-    #secondY += random.randint(-1, 1)
-    #frame = cv2.rectangle(frame,(secondX, secondY),(secondX + 100, secondY + 200),(0,255,0),3)
+        # Crop live stream of camera
+
+        # Draw faces on image
 
     cv2.imshow(window_name, frame)
 
-    k = k = cv2.waitKey(33)#cv2.waitKey(1) & 0xFF
+    k = cv2.waitKey(33)#cv2.waitKey(1) & 0xFF
     if k==27: # Esc key to stop
         break
-    elif k==-1:  # normally -1 returned,so don't print it
-        continue
-    elif k == 2: # Left key
-        if currFrameIndex > 0:
-            currFrameIndex = currFrameIndex - 1
+
+    if scriptMode == EDIT_MODE:
+        if k==-1:  # normally -1 returned,so don't print it
+            continue
+        elif k == 2: # Left key
+            if currFrameIndex > 0:
+                currFrameIndex = currFrameIndex - 1
+                setScrollerByFrame(currFrameIndex)
+        elif k == 3: # Right key
+            if currFrameIndex < framesNum - 1:
+                currFrameIndex = currFrameIndex + 1
+                setScrollerByFrame(currFrameIndex)
+        elif k == ord('m'):
+            setFrameToNextKeyFrame()
             setScrollerByFrame(currFrameIndex)
-    elif k == 3: # Right key
-        if currFrameIndex < framesNum - 1:
-            currFrameIndex = currFrameIndex + 1
+        elif k == ord('n'):
+            setFrameToLastKeyFrame()
             setScrollerByFrame(currFrameIndex)
-    elif k == ord('m'):
-        setFrameToNextKeyFrame()
-        setScrollerByFrame(currFrameIndex)
-    elif k == ord('n'):
-        setFrameToLastKeyFrame()
-        setScrollerByFrame(currFrameIndex)
-    elif k == ord('c'):
-        currRectIndex = (currRectIndex + 1) % 2
+        elif k == ord('c'):
+            currRectIndex = (currRectIndex + 1) % 2
+        elif k == ord('p'):
+            print "Playing..."
+            scriptMode = RUN_MODE
     else:
-        print k # else print its value
+        if k == ord('s'):
+            print "Editing..."
+            scriptMode = EDIT_MODE
+            setScrollerByFrame(currFrameIndex)
+
+    if scriptMode == RUN_MODE:
+        currFrameIndex = currFrameIndex + 1
 
 cap.release()
 cv2.destroyAllWindows()
