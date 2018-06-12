@@ -36,14 +36,14 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
     cv2.rectangle(frame, start, end, color ,3)
 
     # Draw crop from camera
-    # if (face is not None):
-    #     face = cv2.resize(face, (rectKeyFrame['size']['width'], rectKeyFrame['size']['height']), interpolation = cv2.INTER_AREA)
-    #     rows, cols = face.shape[:2]
+    if (face is not None):
+        face = cv2.resize(face, (rectKeyFrame['size']['width'], rectKeyFrame['size']['height']), interpolation = cv2.INTER_AREA)
+        rows, cols = face.shape[:2]
 
-    #     print int(rectKeyFrame['position']['y']), ':', int(rectKeyFrame['position']['y'])+rows
-    #     print int(rectKeyFrame['position']['x']), ':', int(rectKeyFrame['position']['x'])+cols
-    #     print rows, cols
-    #     frame[int(rectKeyFrame['position']['y']):int(rectKeyFrame['position']['y'])+rows][int(rectKeyFrame['position']['x']):int(rectKeyFrame['position']['x'])+cols] = face
+        print int(rectKeyFrame['position']['y']), ':', int(rectKeyFrame['position']['y'])+rows
+        print int(rectKeyFrame['position']['x']), ':', int(rectKeyFrame['position']['x'])+cols
+        print rows, cols
+        frame[int(rectKeyFrame['position']['y']):int(rectKeyFrame['position']['y'])+rows, int(rectKeyFrame['position']['x']):int(rectKeyFrame['position']['x'])+cols] = face
         #M = np.float32([[1,0,rectKeyFrame['position']['x']],[0,1,rectKeyFrame['position']['y']]])
         #face = cv2.warpAffine(face, M, (cols, rows))
 
@@ -226,8 +226,8 @@ def drawCurrColor():
 def getFaces():
     global face1, face2
 
-    face1 = cameraImage[0:100, 0:100]
-    face2 = cameraImage[300:400, 300:400]
+    face1 = cameraImage[133:133+140, 435:435+80]
+    face2 = cameraImage[281:281+114, 114:114+71]
 
 overlayDef = [
     # {
