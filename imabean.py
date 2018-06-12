@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import random
 import sys
+import json
 
 RUN_MODE = 'run'
 EDIT_MODE = 'edit'
@@ -37,12 +38,8 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
 
     # Draw crop from camera
     if (face is not None):
-        face = cv2.resize(face, (rectKeyFrame['size']['width'], rectKeyFrame['size']['height']), interpolation = cv2.INTER_AREA)
+        face = cv2.resize(face, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
         rows, cols = face.shape[:2]
-
-        print int(rectKeyFrame['position']['y']), ':', int(rectKeyFrame['position']['y'])+rows
-        print int(rectKeyFrame['position']['x']), ':', int(rectKeyFrame['position']['x'])+cols
-        print rows, cols
         frame[int(rectKeyFrame['position']['y']):int(rectKeyFrame['position']['y'])+rows, int(rectKeyFrame['position']['x']):int(rectKeyFrame['position']['x'])+cols] = face
         #M = np.float32([[1,0,rectKeyFrame['position']['x']],[0,1,rectKeyFrame['position']['y']]])
         #face = cv2.warpAffine(face, M, (cols, rows))
@@ -51,31 +48,47 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
     #y = 150 if rectKeyFrame['rectIndex'] == 1 else 180
     #cv2.putText(frame, text, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
+def interpolateValues(first, second, ratio):
+    return (first + (second - first) * ratio)
+
 def interpolateRects(firstRect, firstFrame, secondRect, secondFrame, currFrame):
     framesDiff = secondFrame - firstFrame
     ratio = float(currFrame - firstFrame) / framesDiff;
     return {
-        'position': {'x': firstRect['position']['x'] + (secondRect['position']['x'] - firstRect['position']['x']) * ratio, 'y': firstRect['position']['y'] + (secondRect['position']['y'] - firstRect['position']['y']) * ratio },
-        'size': {'width': secondRect['size']['width'], 'height': secondRect['size']['height']}
+        'position': {
+            'x': interpolateValues(firstRect['position']['x'], secondRect['position']['x'], ratio), 
+            'y': interpolateValues(firstRect['position']['y'], secondRect['position']['y'], ratio), 
+        },
+        'size': {
+            'width': interpolateValues(firstRect['size']['width'], secondRect['size']['width'], ratio), 
+            'height': interpolateValues(firstRect['size']['height'], secondRect['size']['height'], ratio)
+        }
     }
 
 def drawFrameFaceRect(frame, rectIndex, color, face):
-    global overlayHash, currFrameIndex
+    global overlayHash, currFrameIndex, keyFrames
 
     rectKeyFrame = overlayHash.get(getKey(rectIndex, currFrameIndex))
 
     if (rectKeyFrame != None):
         drawFaceRect(frame, rectKeyFrame, color, face)
-        # TODO: Draw solid
     else:
-        # TODO: Draw interpolated!
-        lastKeyFrame = getLastKeyFrame()
+        lastKeyFrame = getLastKeyFrame(rectIndex)
         if lastKeyFrame != None:
             lastKeyFrameRect = overlayHash.get(getKey(rectIndex, lastKeyFrame));
-            nextKeyFrame = getNextKeyFrame()
+            nextKeyFrame = getNextKeyFrame(rectIndex)
             if nextKeyFrame != None:
                 nextKeyFrameRect = overlayHash.get(getKey(rectIndex, nextKeyFrame));
-                drawFaceRect(frame, interpolateRects(lastKeyFrameRect, lastKeyFrame, nextKeyFrameRect, nextKeyFrame, currFrameIndex), color, face)
+
+                drawFaceRect(frame, interpolateRects(lastKeyFrameRect, lastKeyFrame, nextKeyFrameRect, nextKeyFrame, currFrameIndex), map(lambda x: x/2, color), face)
+
+def deleteCurrentKeyFrame():
+    global overlayHash, currFrameIndex, currRectIndex
+
+    rectKeyFrame = overlayHash.get(getKey(currRectIndex, currFrameIndex))
+    if (rectKeyFrame != None):
+        del overlayHash[getKey(currRectIndex, currFrameIndex)]
+        loadOverlays(overlayHash.values())
 
 def refreshScroller(frame):
     global frameScrollerX, currFrameIndex, framesNum, overlayHash, keyFrames
@@ -129,6 +142,7 @@ def handleDrawRectStart(x, y):
             'position': {'x': x, 'y': y},
             'size': {'width': 1, 'height': 1}
         }
+
         overlayHash[key] = keyFrame
 
         if (overlayHash.get(getKey((currRectIndex + 1) % 2, currFrameIndex)) == None):
@@ -176,6 +190,7 @@ def getKey(index, frame):
 def loadOverlays(overlayDef):
     global overlayHash, keyFrames
 
+    keyFrames = []
     keyFramesHash = {}
 
     for rectKeyFrame in overlayDef:
@@ -183,29 +198,29 @@ def loadOverlays(overlayDef):
         if (keyFramesHash.get(rectKeyFrame['keyFrameIndex']) == None):
             keyFrames.append(rectKeyFrame['keyFrameIndex'])
             keyFramesHash[rectKeyFrame['keyFrameIndex']] = 1
+    keyFrames.sort()
 
 def setFrameToNextKeyFrame():
     global currFrameIndex, keyFrames
 
-    for i in range(0, len(keyFrames)):
-        if (keyFrames[i] > currFrameIndex):
-            currFrameIndex = keyFrames[i]
-            break
+    nextKeyFrame = getNextKeyFrame()
+    if (nextKeyFrame != None):
+        currFrameIndex = nextKeyFrame
 
-def getLastKeyFrame():
-    global currFrameIndex, keyFrames
+def getLastKeyFrame(rectIndex = None):
+    global currFrameIndex, keyFrames, overlayHash
 
     for i in range(len(keyFrames) - 1, -1, -1):
-        if (keyFrames[i] < currFrameIndex):
+        if (keyFrames[i] < currFrameIndex) and (rectIndex is None or overlayHash.get(getKey(rectIndex, keyFrames[i])) is not None):
             return keyFrames[i]
 
     return None
 
-def getNextKeyFrame():
+def getNextKeyFrame(rectIndex = None):
     global currFrameIndex, keyFrames
 
     for i in range(len(keyFrames)):
-        if (keyFrames[i] > currFrameIndex):
+        if (keyFrames[i] > currFrameIndex) and (rectIndex is None or overlayHash.get(getKey(rectIndex, keyFrames[i])) is not None):
             return keyFrames[i]
 
     return None
@@ -229,38 +244,6 @@ def getFaces():
     face1 = cameraImage[133:133+140, 435:435+80]
     face2 = cameraImage[281:281+114, 114:114+71]
 
-overlayDef = [
-    # {
-    #     'rectIndex': 0,
-    #     'position': {'x': 200, 'y': 200},
-    #     'size': {'width': 100, 'height': 100},
-    #     'keyFrameIndex': 0#,
-    #     #'transition': SINGLE_FRAME
-    # },
-    # {
-    #     'rectIndex': 1,
-    #     'position': {'x': 350, 'y': 350},
-    #     'size': {'width': 50, 'height': 50},
-    #     'keyFrameIndex': 0#,
-    #     #'transition': SINGLE_FRAME
-    # },
-
-    # {
-    #     'rectIndex': 0,
-    #     'position': {'x': 200, 'y': 300},
-    #     'size': {'width': 100, 'height': 100},
-    #     'keyFrameIndex': 50#,
-    #     #'transition': LINEAR_MOVEMENT
-    # },
-    # {
-    #     'rectIndex': 1,
-    #     'position': {'x': 500, 'y': 500},
-    #     'size': {'width': 50, 'height': 50},
-    #     'keyFrameIndex': 50#,
-    #     #'transition': LINEAR_MOVEMENT
-    # }
-]
-
 scriptMode = RUN_MODE
 if (len(sys.argv) == 2):
     scriptMode = sys.argv[1]
@@ -270,6 +253,13 @@ startY = 0
 
 overlayHash = {}
 keyFrames = []
+
+try:
+    with open('imabean.json') as jsonFile:  
+        overlayDef = json.load(jsonFile)
+except:
+    overlayDef = []
+
 loadOverlays(overlayDef)
 
 dragStartX = 0
@@ -341,11 +331,15 @@ while True:
         elif k == ord('c'):
             currRectIndex = (currRectIndex + 1) % 2
         elif k == ord('p'):
-            print "Playing..."
             scriptMode = RUN_MODE
+        elif k == ord('d'):
+            deleteCurrentKeyFrame()
+        elif k == ord('S'):
+            print overlayHash.values()
+            with open('imabean.json', 'w') as outfile:
+                json.dump(overlayHash.values(), outfile)
     else:
         if k == ord('s'):
-            print "Editing..."
             scriptMode = EDIT_MODE
             setScrollerByFrame(currFrameIndex)
 
