@@ -40,7 +40,12 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
     if (face is not None):
         face = cv2.resize(face, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
         rows, cols = face.shape[:2]
+
         frame[int(rectKeyFrame['position']['y']):int(rectKeyFrame['position']['y'])+rows, int(rectKeyFrame['position']['x']):int(rectKeyFrame['position']['x'])+cols] = face
+
+        # Add alpha blending with a nice mask as in here:
+        # https://www.learnopencv.com/alpha-blending-using-opencv-cpp-python/
+
         #M = np.float32([[1,0,rectKeyFrame['position']['x']],[0,1,rectKeyFrame['position']['y']]])
         #face = cv2.warpAffine(face, M, (cols, rows))
 
@@ -267,6 +272,7 @@ dragStartScrollerX = SCROLLER_START_X
 editorMode = NONE
 
 cap = cv2.VideoCapture('./master_converted.mp4')
+#camera = cv2.VideoCapture(0)
 framesNum = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
 cameraImage = cv2.imread("camera-stream.jpg")
@@ -289,6 +295,7 @@ while True:
         cap.set(cv2.CAP_PROP_POS_FRAMES, currFrameIndex)
 
     ret, frame = cap.read()
+    #retCamera, cameraImage = camera.read()
 
     if scriptMode == EDIT_MODE:
         refreshScroller(frame)
