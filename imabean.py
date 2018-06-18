@@ -5,15 +5,13 @@ import sys
 import json
 
 RUN_MODE = 'run'
+TEST_MODE = 'test'
 EDIT_MODE = 'edit'
 
 NONE = 0
 DRAGGING_FRAME = 1
 DRAWING_RECT = 2
 MOVING_RECT = 3
-
-#SINGLE_FRAME = 0
-#LINEAR_MOVEMENT = 1
 
 SCREEN_WIDTH = 1920
 SCREEN_HEIGHT = 1080
@@ -49,10 +47,6 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
         #M = np.float32([[1,0,rectKeyFrame['position']['x']],[0,1,rectKeyFrame['position']['y']]])
         #face = cv2.warpAffine(face, M, (cols, rows))
 
-    #text = 'Single' if rectKeyFrame['transition'] == SINGLE_FRAME else 'Linear'
-    #y = 150 if rectKeyFrame['rectIndex'] == 1 else 180
-    #cv2.putText(frame, text, (10, y), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-
 def interpolateValues(first, second, ratio):
     return (first + (second - first) * ratio)
 
@@ -85,7 +79,7 @@ def drawFrameFaceRect(frame, rectIndex, color, face):
             if nextKeyFrame != None:
                 nextKeyFrameRect = overlayHash.get(getKey(rectIndex, nextKeyFrame));
 
-                drawFaceRect(frame, interpolateRects(lastKeyFrameRect, lastKeyFrame, nextKeyFrameRect, nextKeyFrame, currFrameIndex), map(lambda x: x/2, color), face)
+                drawFaceRect(frame, interpolateRects(lastKeyFrameRect, lastKeyFrame, nextKeyFrameRect, nextKeyFrame, currFrameIndex), list(map(lambda x: x/2, color)), face)
 
 def deleteCurrentKeyFrame():
     global overlayHash, currFrameIndex, currRectIndex
@@ -249,6 +243,11 @@ def getFaces():
     face1 = cameraImage[133:133+140, 435:435+80]
     face2 = cameraImage[281:281+114, 114:114+71]
 
+def isRunMode():
+    global scriptMode
+
+    return (scriptMode == RUN_MODE or scriptMode == TEST_MODE)
+
 scriptMode = RUN_MODE
 if (len(sys.argv) == 2):
     scriptMode = sys.argv[1]
@@ -272,15 +271,24 @@ dragStartScrollerX = SCROLLER_START_X
 editorMode = NONE
 
 cap = cv2.VideoCapture('./master_converted.mp4')
-#camera = cv2.VideoCapture(0)
-framesNum = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-cameraImage = cv2.imread("camera-stream.jpg")
+if scriptMode == RUN_MODE:
+    camera = cv2.VideoCapture(0)
+framesNum = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+print ("Frames: ", framesNum)
+
+if scriptMode == TEST_MODE:
+    cameraImage = cv2.imread("./camera-stream.jpg")
+
 face1 = None
 face2 = None
 
 window_name = 'projector'
-cv2.namedWindow(window_name)
+
+if isRunMode():
+    cv2.namedWindow(window_name, cv2.WND_PROP_FULLSCREEN)
+else:
+    cv2.namedWindow(window_name)
 cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 cv2.setMouseCallback(window_name, onMouseMove)
 
@@ -295,31 +303,27 @@ while True:
         cap.set(cv2.CAP_PROP_POS_FRAMES, currFrameIndex)
 
     ret, frame = cap.read()
-    #retCamera, cameraImage = camera.read()
+
+    if scriptMode == RUN_MODE:
+        retCamera, cameraImage = camera.read()
 
     if scriptMode == EDIT_MODE:
         refreshScroller(frame)
         drawCurrColor()
 
-    if scriptMode == RUN_MODE:
+    if scriptMode == isRunMode:
         getFaces()
         drawFrameFaceRect(frame, FIRST_RECT_INDEX, (255, 0, 0), face1)
         drawFrameFaceRect(frame, SECOND_RECT_INDEX, (0, 0, 255), face2)
 
-        # Get current face positions
-
-        # Crop live stream of camera
-
-        # Draw faces on image
-
     cv2.imshow(window_name, frame)
 
-    k = cv2.waitKey(33)#cv2.waitKey(1) & 0xFF
+    k = cv2.waitKey(33)
     if k==27: # Esc key to stop
         break
 
     if scriptMode == EDIT_MODE:
-        if k==-1:  # normally -1 returned,so don't print it
+        if k == -1:  # normally -1 returned, so don't print it
             continue
         elif k == 2: # Left key
             if currFrameIndex > 0:
@@ -338,11 +342,11 @@ while True:
         elif k == ord('c'):
             currRectIndex = (currRectIndex + 1) % 2
         elif k == ord('p'):
-            scriptMode = RUN_MODE
+            scriptMode = TEST_MODE
         elif k == ord('d'):
             deleteCurrentKeyFrame()
         elif k == ord('S'):
-            print overlayHash.values()
+            print(overlayHash.values())
             with open('imabean.json', 'w') as outfile:
                 json.dump(overlayHash.values(), outfile)
     else:
@@ -350,8 +354,9 @@ while True:
             scriptMode = EDIT_MODE
             setScrollerByFrame(currFrameIndex)
 
-    if scriptMode == RUN_MODE:
+    if isRunMode():
         currFrameIndex = currFrameIndex + 1
 
 cap.release()
 cv2.destroyAllWindows()
+exit()
