@@ -4,6 +4,8 @@ import random
 import sys
 import json
 
+#from ffpyplayer.player import MediaPlayer
+
 RUN_MODE = 'run'
 TEST_MODE = 'test'
 EDIT_MODE = 'edit'
@@ -11,7 +13,8 @@ EDIT_MODE = 'edit'
 NONE = 0
 DRAGGING_FRAME = 1
 DRAWING_RECT = 2
-MOVING_RECT = 3
+DRAGGING_RECT = 3
+MOVING_RECT = 4
 
 SCREEN_WIDTH = 1920
 SCREEN_HEIGHT = 1080
@@ -26,26 +29,105 @@ SCROLLER_END_X = SCREEN_WIDTH - SCROLLER_MARGIN - SCROLLER_WIDTH
 FIRST_RECT_INDEX = 0
 SECOND_RECT_INDEX = 1
 
+FIRST_FACE_X = 445
+FIRST_FACE_Y = 143
+FIRST_FACE_WIDTH = 85
+FIRST_FACE_HEIGHT = 124
+
+SECOND_FACE_X = 119
+SECOND_FACE_Y = 296
+SECOND_FACE_WIDTH = 100
+SECOND_FACE_HEIGHT = 138
+
+def resizeNoStretch(image, newWidth, newHeight):
+    oldRows, oldCols = image.shape[:2]
+
+    resizeTarget = np.zeros((newWidth, newHeight, 3), np.float32)
+
+    offsetX = int((newWidth - oldCols) / 2.0)
+    offsetY = int((newHeight - oldRows) / 2.0)
+
+    print ("Offset: ", offsetX, offsetY)
+
+    resizeTarget[offsetY : offsetY + oldRows, offsetX : offsetX + oldCols] = image
+    return resizeTarget
+
 def drawFaceRect(frame, rectKeyFrame, color, face):
-    global cameraImage
+    global alpha1, alpha2
 
     start = (int(rectKeyFrame['position']['x']), int(rectKeyFrame['position']['y']))
     end = (int(rectKeyFrame['position']['x'] + rectKeyFrame['size']['width']), int(rectKeyFrame['position']['y'] + rectKeyFrame['size']['height']))
 
-    cv2.rectangle(frame, start, end, color ,3)
+    drawRotatedRect(frame, start, end, color, 3, rectKeyFrame['position']['rotation'])
 
     # Draw crop from camera
     if (face is not None):
+
+        # First, resize face to designated rectangle size, get new size
         face = cv2.resize(face, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
         rows, cols = face.shape[:2]
 
-        frame[int(rectKeyFrame['position']['y']):int(rectKeyFrame['position']['y'])+rows, int(rectKeyFrame['position']['x']):int(rectKeyFrame['position']['x'])+cols] = face
+        # Now, load alpha mask, and resize it to same size
+        alpha = cv2.imread('first-alpha-mask.png') if rectKeyFrame['rectIndex'] == 0 else cv2.imread('second-alpha-mask.png')
+        alpha = cv2.resize(alpha, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
 
-        # Add alpha blending with a nice mask as in here:
-        # https://www.learnopencv.com/alpha-blending-using-opencv-cpp-python/
+        # Resize both face and mask to allow rotation without cropping
+        face = resizeNoStretch(face, int(cols * 2.5), int(rows * 2.5))
+        alpha = resizeNoStretch(alpha, int(cols * 2.5), int(rows * 2.5))
+        postResizeRows = int(rows * 2.5)
+        postResizeCols = int(cols * 2.5)
 
-        #M = np.float32([[1,0,rectKeyFrame['position']['x']],[0,1,rectKeyFrame['position']['y']]])
-        #face = cv2.warpAffine(face, M, (cols, rows))
+        # Rotate face to correct rotation
+        M = cv2.getRotationMatrix2D((postResizeCols/2,postResizeRows/2), rectKeyFrame['position']['rotation'] / (np.pi * 2) * 360, 1)
+        face = cv2.warpAffine(face, M, (postResizeCols,postResizeRows))
+
+        # Rotate mask to match face rotation
+        alpha = cv2.warpAffine(alpha, M, (postResizeCols,postResizeRows))
+
+        # Apply mask on face (foreground)
+        foreground = face.astype(float)
+        alpha = alpha.astype(float) / 255
+        #foreground = cv2.multiply(alpha, foreground)
+
+        backgroundX = int(rectKeyFrame['position']['x']) - int((postResizeCols - cols) / 2.0)
+        backgroundY = int(rectKeyFrame['position']['y']) - int((postResizeRows - rows) / 2.0)
+
+        # Get background from image
+        background = frame[backgroundY : backgroundY + postResizeRows, backgroundX : backgroundX + postResizeCols].astype(float)
+        background = cv2.multiply(1.0 - alpha, background)
+        outImage = cv2.add(foreground, background)
+
+        frame[backgroundY : backgroundY + postResizeRows, backgroundX : backgroundX + postResizeCols] = outImage
+
+def drawRotatedRect(frame, start, end, color, line, rotation):
+    points = [start, (start[0], end[1]), end, (end[0], start[1])]
+    print ("Points: ", points)
+    centerX = (start[0] + end[0]) / 2.0
+    centerY = (start[1] + end[1]) / 2.0
+    #print ("Center: ", (centerX, centerY))
+    rotatedPoints = list(map(lambda point: rotatePointAroundPoint(point, (centerX, centerY), rotation), points))
+    rotatedCoordinates = list(map(lambda tuple: [tuple[0], tuple[1]], rotatedPoints))
+
+    #print (rotatedCoordinates)
+    npPoints = np.array(rotatedCoordinates, np.int32)
+    npPoints = npPoints.reshape((-1, 1, 2))
+    cv2.polylines(frame, [npPoints], True, color, line)
+
+def rotatePointAroundPoint(point, anchor, angle):
+    (x, y) = point
+    y = SCREEN_HEIGHT - y
+    (anchorX, anchorY) = anchor
+    anchorY = SCREEN_HEIGHT - anchorY
+
+    s = np.sin(angle)
+    c = np.cos(angle)
+
+    (dx, dy) = (x - anchorX, y - anchorY)
+
+    rotatedDx = dx * c - dy * s
+    rotatedDy = dy * c + dx * s
+
+    return (anchorX + rotatedDx, SCREEN_HEIGHT - (anchorY + rotatedDy))
 
 def interpolateValues(first, second, ratio):
     return (first + (second - first) * ratio)
@@ -54,9 +136,11 @@ def interpolateRects(firstRect, firstFrame, secondRect, secondFrame, currFrame):
     framesDiff = secondFrame - firstFrame
     ratio = float(currFrame - firstFrame) / framesDiff;
     return {
+        'rectIndex': firstRect['rectIndex'],
         'position': {
             'x': interpolateValues(firstRect['position']['x'], secondRect['position']['x'], ratio), 
             'y': interpolateValues(firstRect['position']['y'], secondRect['position']['y'], ratio), 
+            'rotation': interpolateValues(firstRect['position']['rotation'], secondRect['position']['rotation'], ratio), 
         },
         'size': {
             'width': interpolateValues(firstRect['size']['width'], secondRect['size']['width'], ratio), 
@@ -64,22 +148,41 @@ def interpolateRects(firstRect, firstFrame, secondRect, secondFrame, currFrame):
         }
     }
 
+def getInterpolatedRect(rectIndex):
+    global overlayHash, currFrameIndex
+
+    lastKeyFrame = getLastKeyFrame(rectIndex)
+    if lastKeyFrame != None:
+        lastKeyFrameRect = overlayHash.get(getKey(rectIndex, lastKeyFrame));
+        nextKeyFrame = getNextKeyFrame(rectIndex)
+        if nextKeyFrame != None:
+            nextKeyFrameRect = overlayHash.get(getKey(rectIndex, nextKeyFrame));
+            return interpolateRects(lastKeyFrameRect, lastKeyFrame, nextKeyFrameRect, nextKeyFrame, currFrameIndex)
+
+    return None
+
 def drawFrameFaceRect(frame, rectIndex, color, face):
-    global overlayHash, currFrameIndex, keyFrames
+    global overlayHash, currFrameIndex
 
     rectKeyFrame = overlayHash.get(getKey(rectIndex, currFrameIndex))
 
     if (rectKeyFrame != None):
         drawFaceRect(frame, rectKeyFrame, color, face)
     else:
-        lastKeyFrame = getLastKeyFrame(rectIndex)
-        if lastKeyFrame != None:
-            lastKeyFrameRect = overlayHash.get(getKey(rectIndex, lastKeyFrame));
-            nextKeyFrame = getNextKeyFrame(rectIndex)
-            if nextKeyFrame != None:
-                nextKeyFrameRect = overlayHash.get(getKey(rectIndex, nextKeyFrame));
+        rect = getInterpolatedRect(rectIndex)
 
-                drawFaceRect(frame, interpolateRects(lastKeyFrameRect, lastKeyFrame, nextKeyFrameRect, nextKeyFrame, currFrameIndex), list(map(lambda x: x/2, color)), face)
+        if (rect is not None):
+            drawFaceRect(frame, rect, list(map(lambda x: x/2, color)), face)
+
+def convertToKeyFrame():
+    global overlayHash, currRectIndex, currFrameIndex, keyFrames
+
+    keyFrame = overlayHash.get(getKey(currRectIndex, currFrameIndex))
+
+    if (keyFrame is None):
+        rect = getInterpolatedRect(currRectIndex)
+        if (rect is not None):
+            createKeyFrame(rect['position']['x'], rect['position']['y'], rect['size']['width'], rect['size']['height'])
 
 def deleteCurrentKeyFrame():
     global overlayHash, currFrameIndex, currRectIndex
@@ -123,6 +226,44 @@ def updateFrameScrollerX(x):
 
     setFrameByScroller()
 
+def createKeyFrame(x, y, width, height):
+    global currRectIndex, currFrameIndex
+
+    keyFrame = {
+        'rectIndex': currRectIndex,
+        'keyFrameIndex': currFrameIndex,
+        'position': {'x': x, 'y': y, 'rotation': 0},
+        'size': {'width': width, 'height': height}
+    }
+
+    key = getKey(currRectIndex, currFrameIndex)
+    overlayHash[key] = keyFrame
+
+    if (overlayHash.get(getKey((currRectIndex + 1) % 2, currFrameIndex)) == None):
+        keyFrames.append(currFrameIndex)
+        keyFrames.sort()
+
+def handleDragRectStart(x, y):
+    global startX, startY, startRectX, startRectY, overlayHash, pointedRect
+
+    startX = x
+    startY = y
+
+    startRectX = pointedRect['position']['x']
+    startRectY = pointedRect['position']['y']
+
+    key = getKey(currRectIndex, currFrameIndex)
+    if overlayHash.get(key) is None:
+        createKeyFrame(startRectX, startRectY, pointedRect.width, pointedRect.height)
+
+def handleDragRectEnd(x, y):
+    global startX, startY, startRectX, startRectY, currRectIndex, currFrameIndex, overlayHash
+
+    key = getKey(currRectIndex, currFrameIndex)
+    keyFrame = overlayHash.get(key)
+    keyFrame['position']['x'] = startRectX + x - startX
+    keyFrame['position']['y'] = startRectY + y - startY    
+
 def handleDrawRectStart(x, y):
     global startX, startY, currRectIndex, currFrameIndex, overlayHash
 
@@ -130,23 +271,11 @@ def handleDrawRectStart(x, y):
     startY = y
 
     key = getKey(currRectIndex, currFrameIndex)
-    if overlayHash.get(key) != None:
+    if overlayHash.get(key) is not None:
         overlayHash.get(key)['position']['x'] = x;
         overlayHash.get(key)['position']['y'] = y;
     else:
-        # Create new key frame!
-        keyFrame = {
-            'rectIndex': currRectIndex,
-            'keyFrameIndex': currFrameIndex,
-            'position': {'x': x, 'y': y},
-            'size': {'width': 1, 'height': 1}
-        }
-
-        overlayHash[key] = keyFrame
-
-        if (overlayHash.get(getKey((currRectIndex + 1) % 2, currFrameIndex)) == None):
-            keyFrames.append(currFrameIndex)
-            keyFrames.sort()
+        createKeyFrame(x, y, 1, 1)
 
 def handleDrawRectEnd(x, y):
     global startX, startY, currRectIndex, currFrameIndex, overlayHash
@@ -156,8 +285,41 @@ def handleDrawRectEnd(x, y):
     keyFrame['size']['width'] = x - startX
     keyFrame['size']['height'] = y - startY
 
+def isOnRect(x, y, index):
+    global currFrameIndex
+
+    key = getKey(index, currFrameIndex)
+    keyFrame = overlayHash.get(key)
+
+    if (keyFrame is not None):
+        rectX = keyFrame['position']['x']
+        rectY = keyFrame['position']['y']
+        rectWidth = keyFrame['size']['width']
+        rectHeight = keyFrame['size']['height']
+
+        if (x >= rectX and x <= rectX + rectWidth and y >= rectY and y <= rectY + rectHeight):
+            return keyFrame
+
+    return None
+
+
+def getPointedRect(x, y):
+    global currRectIndex, currFrameIndex
+
+    rect = isOnRect(x, y, currRectIndex)
+
+    if (rect is not None):
+        return rect
+
+    rect = isOnRect(x, y, (currRectIndex + 1) % 2)
+
+    if (rect is not None):
+        return rect
+
+    return None
+
 def onMouseMove(event, x, y, flags, param):
-    global editorMode, frame, frameScrollerX, dragStartX, dragStartScrollerX, scriptMode
+    global editorMode, frame, frameScrollerX, dragStartX, dragStartScrollerX, scriptMode, currRectIndex, pointedRect
 
     if scriptMode == EDIT_MODE:
         if event == cv2.EVENT_LBUTTONDOWN:
@@ -166,14 +328,22 @@ def onMouseMove(event, x, y, flags, param):
                 dragStartScrollerX = frameScrollerX
                 editorMode = DRAGGING_FRAME
             else:
-                editorMode = DRAWING_RECT
-                handleDrawRectStart(x, y)
+                pointedRect = getPointedRect(x, y)
+                if (pointedRect is None):
+                    editorMode = DRAWING_RECT
+                    handleDrawRectStart(x, y)
+                else:
+                    currRectIndex = pointedRect['rectIndex']
+                    editorMode = DRAGGING_RECT
+                    handleDragRectStart(x, y)
 
         elif event == cv2.EVENT_MOUSEMOVE:
             if (editorMode == DRAGGING_FRAME):
                 updateFrameScrollerX(dragStartScrollerX + x - dragStartX)
             elif (editorMode == DRAWING_RECT):
                 handleDrawRectEnd(x, y)
+            elif (editorMode == DRAGGING_RECT):
+                handleDragRectEnd(x, y)
 
         elif event == cv2.EVENT_LBUTTONUP:
             if (editorMode == DRAGGING_FRAME):
@@ -181,6 +351,9 @@ def onMouseMove(event, x, y, flags, param):
                 updateFrameScrollerX(dragStartScrollerX + x - dragStartX)
             elif (editorMode == DRAWING_RECT):
                 handleDrawRectEnd(x, y)
+                editorMode = NONE
+            elif (editorMode == DRAGGING_RECT):
+                handleDragRectEnd(x, y)
                 editorMode = NONE
 
 def getKey(index, frame):
@@ -240,8 +413,8 @@ def drawCurrColor():
 def getFaces():
     global face1, face2
 
-    face1 = cameraImage[133:133+140, 435:435+80]
-    face2 = cameraImage[281:281+114, 114:114+71]
+    face1 = cameraImage[FIRST_FACE_Y:FIRST_FACE_Y+FIRST_FACE_HEIGHT, FIRST_FACE_X:FIRST_FACE_X+FIRST_FACE_WIDTH]
+    face2 = cameraImage[SECOND_FACE_Y:SECOND_FACE_Y+SECOND_FACE_HEIGHT, SECOND_FACE_X:SECOND_FACE_X+SECOND_FACE_WIDTH]
 
 def isRunMode():
     global scriptMode
@@ -254,6 +427,11 @@ if (len(sys.argv) == 2):
 
 startX = 0
 startY = 0
+
+startRectX = 0
+startRectY = 0
+
+pointedRect = None
 
 overlayHash = {}
 keyFrames = []
@@ -272,13 +450,20 @@ editorMode = NONE
 
 cap = cv2.VideoCapture('./master_converted.mp4')
 
+player = None
+if isRunMode:
+    pass
+    #player = MediaPlayer('./master_converted.mp4')
+
 if scriptMode == RUN_MODE:
     camera = cv2.VideoCapture(0)
 framesNum = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-print ("Frames: ", framesNum)
 
 if scriptMode == TEST_MODE:
-    cameraImage = cv2.imread("./camera-stream.jpg")
+    cameraImage = cv2.imread('./camera-stream.jpg')
+
+alpha1 = cv2.imread('first-alpha-mask.png')
+alpha2 = cv2.imread('second-alpha-mask.png')
 
 face1 = None
 face2 = None
@@ -304,6 +489,9 @@ while True:
 
     ret, frame = cap.read()
 
+    if player is not None:
+        player.get_frame()
+
     if scriptMode == RUN_MODE:
         retCamera, cameraImage = camera.read()
 
@@ -311,7 +499,7 @@ while True:
         refreshScroller(frame)
         drawCurrColor()
 
-    if scriptMode == isRunMode:
+    if isRunMode():
         getFaces()
         drawFrameFaceRect(frame, FIRST_RECT_INDEX, (255, 0, 0), face1)
         drawFrameFaceRect(frame, SECOND_RECT_INDEX, (0, 0, 255), face2)
@@ -339,6 +527,8 @@ while True:
         elif k == ord('n'):
             setFrameToLastKeyFrame()
             setScrollerByFrame(currFrameIndex)
+        elif k == ord('K'):
+            convertToKeyFrame()
         elif k == ord('c'):
             currRectIndex = (currRectIndex + 1) % 2
         elif k == ord('p'):
@@ -348,7 +538,32 @@ while True:
         elif k == ord('S'):
             print(overlayHash.values())
             with open('imabean.json', 'w') as outfile:
-                json.dump(overlayHash.values(), outfile)
+                print (list(overlayHash.values()))
+                json.dump(list(overlayHash.values()), outfile)
+
+        keyFrame = overlayHash.get(getKey(currRectIndex, currFrameIndex))
+        if keyFrame is not None:
+            if k == ord('x'):
+                keyFrame['position']['x'] -= 1
+            elif k == ord('X'):
+                keyFrame['position']['x'] += 1
+            elif k == ord('y'):
+                keyFrame['position']['y'] -= 1
+            elif k == ord('Y'):
+                keyFrame['position']['y'] += 1
+            elif k == ord('w'):
+                keyFrame['size']['width'] -= 1
+            elif k == ord('W'):
+                keyFrame['size']['width'] += 1
+            elif k == ord('h'):
+                keyFrame['size']['height'] -= 1
+            elif k == ord('H'):
+                keyFrame['size']['height'] += 1
+            elif k == ord('r'):
+                keyFrame['position']['rotation'] -= (2 * np.pi / 360.0)
+            elif k == ord('R'):
+                keyFrame['position']['rotation'] += (2 * np.pi / 360.0)
+
     else:
         if k == ord('s'):
             scriptMode = EDIT_MODE
@@ -360,3 +575,4 @@ while True:
 cap.release()
 cv2.destroyAllWindows()
 exit()
+
