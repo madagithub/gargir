@@ -73,7 +73,7 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
         rows, cols = stretchedFace.shape[:2]
 
         # Now, load alpha mask, and resize it to same size
-        alpha = cv2.imread('first-alpha-mask.png').astype(np.float) if rectKeyFrame['rectIndex'] == 0 else cv2.imread('second-alpha-mask.png').astype(np.float)
+        alpha = alpha1 if rectKeyFrame['rectIndex'] == 0 else alpha2
         alpha = cv2.resize(alpha, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
 
         # Resize both face and mask to allow rotation without cropping
@@ -100,11 +100,19 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
         backgroundY = int(rectKeyFrame['position']['y']) - int((postResizeRows - rows) / 2.0)
 
         # Get background from image
-        background = frame[backgroundY : backgroundY + postResizeRows, backgroundX : backgroundX + postResizeCols].astype(float)
+        sourceYOffset = 0
+        if backgroundY < 0:
+            sourceYOffset = abs(backgroundY)
+            backgroundY = 0
+
+        background = frame[backgroundY : backgroundY + postResizeRows - sourceYOffset, backgroundX : backgroundX + postResizeCols].astype(float)
+        alpha = alpha[0 : postResizeRows - sourceYOffset, 0 : postResizeCols]
+        print("Alpha: ", len(alpha), "Background: ", len(background))
         background = cv2.multiply((1.0 - alpha), background)
+        foreground = foreground[0 : postResizeRows - sourceYOffset, 0 : postResizeCols]
         outImage = cv2.add(foreground, background)
 
-        frame[backgroundY : backgroundY + postResizeRows, backgroundX : backgroundX + postResizeCols] = outImage
+        frame[backgroundY : backgroundY + postResizeRows - sourceYOffset, backgroundX : backgroundX + postResizeCols] = outImage[0 : postResizeRows - sourceYOffset, 0 : postResizeCols]
 
 def drawRotatedRect(frame, start, end, color, line, rotation):
     points = [start, (start[0], end[1]), end, (end[0], start[1])]
