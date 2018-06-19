@@ -41,74 +41,79 @@ SECOND_FACE_HEIGHT = 138
 
 def resizeNoStretch(image, newWidth, newHeight):
     oldRows, oldCols = image.shape[:2]
+    print("Old rows/cols: ", oldRows, oldCols)
 
-    resizeTarget = np.zeros((newWidth, newHeight, 3), np.float32)
+    print("new width/height: ", newWidth, newHeight)
+    resizeTarget = np.zeros((newHeight, newWidth, 3), np.float)
+    resizeRows, resizeCols = resizeTarget.shape[:2]
+    print("Resize rows/cols: ", resizeRows, resizeCols)
 
     offsetX = int((newWidth - oldCols) / 2.0)
     offsetY = int((newHeight - oldRows) / 2.0)
+    print("Offset x/y: ", offsetX, offsetY)
 
-    print ("Offset: ", offsetX, offsetY)
-
+    print("Dest: ", offsetX, offsetX + oldCols)
     resizeTarget[offsetY : offsetY + oldRows, offsetX : offsetX + oldCols] = image
     return resizeTarget
 
 def drawFaceRect(frame, rectKeyFrame, color, face):
-    global alpha1, alpha2
+    global alpha1, alpha2, scriptMode
 
     start = (int(rectKeyFrame['position']['x']), int(rectKeyFrame['position']['y']))
     end = (int(rectKeyFrame['position']['x'] + rectKeyFrame['size']['width']), int(rectKeyFrame['position']['y'] + rectKeyFrame['size']['height']))
 
-    drawRotatedRect(frame, start, end, color, 3, rectKeyFrame['position']['rotation'])
+    if scriptMode != RUN_MODE:
+        drawRotatedRect(frame, start, end, color, 3, rectKeyFrame['position']['rotation'])
 
-    # Draw crop from camera
+    #Draw crop from camera
     if (face is not None):
 
         # First, resize face to designated rectangle size, get new size
-        face = cv2.resize(face, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
-        rows, cols = face.shape[:2]
+        stretchedFace = cv2.resize(face, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
+        rows, cols = stretchedFace.shape[:2]
 
         # Now, load alpha mask, and resize it to same size
-        alpha = cv2.imread('first-alpha-mask.png') if rectKeyFrame['rectIndex'] == 0 else cv2.imread('second-alpha-mask.png')
+        alpha = cv2.imread('first-alpha-mask.png').astype(np.float) if rectKeyFrame['rectIndex'] == 0 else cv2.imread('second-alpha-mask.png').astype(np.float)
         alpha = cv2.resize(alpha, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
 
         # Resize both face and mask to allow rotation without cropping
-        face = resizeNoStretch(face, int(cols * 2.5), int(rows * 2.5))
-        alpha = resizeNoStretch(alpha, int(cols * 2.5), int(rows * 2.5))
-        postResizeRows = int(rows * 2.5)
-        postResizeCols = int(cols * 2.5)
+        print("Resize face")
+        stretchedFace = resizeNoStretch(stretchedFace, int(cols * 3), int(rows * 3))
+        print("Resize alpha")
+        alpha = resizeNoStretch(alpha, int(cols * 3), int(rows * 3))
+        postResizeRows = int(rows * 3)
+        postResizeCols = int(cols * 3)
 
         # Rotate face to correct rotation
         M = cv2.getRotationMatrix2D((postResizeCols/2,postResizeRows/2), rectKeyFrame['position']['rotation'] / (np.pi * 2) * 360, 1)
-        face = cv2.warpAffine(face, M, (postResizeCols,postResizeRows))
+        stretchedFace = cv2.warpAffine(stretchedFace, M, (postResizeCols,postResizeRows))
 
         # Rotate mask to match face rotation
         alpha = cv2.warpAffine(alpha, M, (postResizeCols,postResizeRows))
 
         # Apply mask on face (foreground)
-        foreground = face.astype(float)
-        alpha = alpha.astype(float) / 255
-        #foreground = cv2.multiply(alpha, foreground)
+        foreground = stretchedFace
+        alpha = alpha / 255
+        foreground = cv2.multiply(alpha, foreground)
 
         backgroundX = int(rectKeyFrame['position']['x']) - int((postResizeCols - cols) / 2.0)
         backgroundY = int(rectKeyFrame['position']['y']) - int((postResizeRows - rows) / 2.0)
 
         # Get background from image
         background = frame[backgroundY : backgroundY + postResizeRows, backgroundX : backgroundX + postResizeCols].astype(float)
-        background = cv2.multiply(1.0 - alpha, background)
+        background = cv2.multiply((1.0 - alpha), background)
         outImage = cv2.add(foreground, background)
 
         frame[backgroundY : backgroundY + postResizeRows, backgroundX : backgroundX + postResizeCols] = outImage
 
 def drawRotatedRect(frame, start, end, color, line, rotation):
     points = [start, (start[0], end[1]), end, (end[0], start[1])]
-    print ("Points: ", points)
     centerX = (start[0] + end[0]) / 2.0
     centerY = (start[1] + end[1]) / 2.0
-    #print ("Center: ", (centerX, centerY))
+
     rotatedPoints = list(map(lambda point: rotatePointAroundPoint(point, (centerX, centerY), rotation), points))
     rotatedCoordinates = list(map(lambda tuple: [tuple[0], tuple[1]], rotatedPoints))
 
-    #print (rotatedCoordinates)
     npPoints = np.array(rotatedCoordinates, np.int32)
     npPoints = npPoints.reshape((-1, 1, 2))
     cv2.polylines(frame, [npPoints], True, color, line)
@@ -149,7 +154,7 @@ def interpolateRects(firstRect, firstFrame, secondRect, secondFrame, currFrame):
     }
 
 def getInterpolatedRect(rectIndex):
-    global overlayHash, currFrameIndex
+    global overlayHash, currFrameIndex, scriptMode
 
     lastKeyFrame = getLastKeyFrame(rectIndex)
     if lastKeyFrame != None:
@@ -158,6 +163,8 @@ def getInterpolatedRect(rectIndex):
         if nextKeyFrame != None:
             nextKeyFrameRect = overlayHash.get(getKey(rectIndex, nextKeyFrame));
             return interpolateRects(lastKeyFrameRect, lastKeyFrame, nextKeyFrameRect, nextKeyFrame, currFrameIndex)
+        elif scriptMode == EDIT_MODE:
+            return lastKeyFrameRect
 
     return None
 
@@ -274,6 +281,7 @@ def handleDrawRectStart(x, y):
     if overlayHash.get(key) is not None:
         overlayHash.get(key)['position']['x'] = x;
         overlayHash.get(key)['position']['y'] = y;
+        overlayHash.get(key)['position']['rotation'] = 0
     else:
         createKeyFrame(x, y, 1, 1)
 
@@ -462,8 +470,8 @@ framesNum = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 if scriptMode == TEST_MODE:
     cameraImage = cv2.imread('./camera-stream.jpg')
 
-alpha1 = cv2.imread('first-alpha-mask.png')
-alpha2 = cv2.imread('second-alpha-mask.png')
+alpha1 = cv2.imread('first-alpha-mask.png').astype(np.float)
+alpha2 = cv2.imread('second-alpha-mask.png').astype(np.float)
 
 face1 = None
 face2 = None
@@ -536,9 +544,7 @@ while True:
         elif k == ord('d'):
             deleteCurrentKeyFrame()
         elif k == ord('S'):
-            print(overlayHash.values())
             with open('imabean.json', 'w') as outfile:
-                print (list(overlayHash.values()))
                 json.dump(list(overlayHash.values()), outfile)
 
         keyFrame = overlayHash.get(getKey(currRectIndex, currFrameIndex))
@@ -571,6 +577,9 @@ while True:
 
     if isRunMode():
         currFrameIndex = currFrameIndex + 1
+        if currFrameIndex >= framesNum:
+            currFrameIndex = 0
+            cap.set(cv2.CAP_PROP_POS_FRAMES, currFrameIndex)
 
 cap.release()
 cv2.destroyAllWindows()
