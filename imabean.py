@@ -99,20 +99,24 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
         backgroundX = int(rectKeyFrame['position']['x']) - int((postResizeCols - cols) / 2.0)
         backgroundY = int(rectKeyFrame['position']['y']) - int((postResizeRows - rows) / 2.0)
 
-        # Get background from image
-        sourceYOffset = 0
-        if backgroundY < 0:
-            sourceYOffset = abs(backgroundY)
-            backgroundY = 0
+        if backgroundY + postResizeRows > 0:
+            # Get background from image
+            sourceYOffset = 0
+            sourceYEndOffset = 0
+            if backgroundY < 0:
+                sourceYOffset = abs(backgroundY)
+            if backgroundY + postResizeRows > SCREEN_HEIGHT:
+                sourceYEndOffset = backgroundY + postResizeRows - SCREEN_HEIGHT
 
-        background = frame[backgroundY : backgroundY + postResizeRows - sourceYOffset, backgroundX : backgroundX + postResizeCols].astype(float)
-        alpha = alpha[0 : postResizeRows - sourceYOffset, 0 : postResizeCols]
-        print("Alpha: ", len(alpha), "Background: ", len(background))
-        background = cv2.multiply((1.0 - alpha), background)
-        foreground = foreground[0 : postResizeRows - sourceYOffset, 0 : postResizeCols]
-        outImage = cv2.add(foreground, background)
+            print (backgroundY, backgroundY + postResizeRows, backgroundX, backgroundX + postResizeCols)
+            background = frame[backgroundY + sourceYOffset : backgroundY + postResizeRows - sourceYEndOffset, backgroundX : backgroundX + postResizeCols].astype(float)
+            alpha = alpha[sourceYOffset : sourceYOffset + postResizeRows - sourceYEndOffset, 0 : postResizeCols]
+            print("Alpha: ", len(alpha), "Background: ", len(background))
+            background = cv2.multiply((1.0 - alpha), background)
+            foreground = foreground[sourceYOffset : sourceYOffset + postResizeRows - sourceYEndOffset, 0 : postResizeCols]
+            outImage = cv2.add(foreground, background)
 
-        frame[backgroundY : backgroundY + postResizeRows - sourceYOffset, backgroundX : backgroundX + postResizeCols] = outImage[0 : postResizeRows - sourceYOffset, 0 : postResizeCols]
+            frame[backgroundY + sourceYOffset : backgroundY + postResizeRows - sourceYEndOffset, backgroundX : backgroundX + postResizeCols] = outImage
 
 def drawRotatedRect(frame, start, end, color, line, rotation):
     points = [start, (start[0], end[1]), end, (end[0], start[1])]
