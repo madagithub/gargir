@@ -41,18 +41,13 @@ SECOND_FACE_HEIGHT = 138
 
 def resizeNoStretch(image, newWidth, newHeight):
     oldRows, oldCols = image.shape[:2]
-    print("Old rows/cols: ", oldRows, oldCols)
 
-    print("new width/height: ", newWidth, newHeight)
     resizeTarget = np.zeros((newHeight, newWidth, 3), np.float)
     resizeRows, resizeCols = resizeTarget.shape[:2]
-    print("Resize rows/cols: ", resizeRows, resizeCols)
 
     offsetX = int((newWidth - oldCols) / 2.0)
     offsetY = int((newHeight - oldRows) / 2.0)
-    print("Offset x/y: ", offsetX, offsetY)
 
-    print("Dest: ", offsetX, offsetX + oldCols)
     resizeTarget[offsetY : offsetY + oldRows, offsetX : offsetX + oldCols] = image
     return resizeTarget
 
@@ -77,9 +72,7 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
         alpha = cv2.resize(alpha, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
 
         # Resize both face and mask to allow rotation without cropping
-        print("Resize face")
         stretchedFace = resizeNoStretch(stretchedFace, int(cols * 3), int(rows * 3))
-        print("Resize alpha")
         alpha = resizeNoStretch(alpha, int(cols * 3), int(rows * 3))
         postResizeRows = int(rows * 3)
         postResizeCols = int(cols * 3)
@@ -108,10 +101,8 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
             if backgroundY + postResizeRows > SCREEN_HEIGHT:
                 sourceYEndOffset = backgroundY + postResizeRows - SCREEN_HEIGHT
 
-            print (backgroundY, backgroundY + postResizeRows, backgroundX, backgroundX + postResizeCols)
             background = frame[backgroundY + sourceYOffset : backgroundY + postResizeRows - sourceYEndOffset, backgroundX : backgroundX + postResizeCols].astype(float)
             alpha = alpha[sourceYOffset : sourceYOffset + postResizeRows - sourceYEndOffset, 0 : postResizeCols]
-            print("Alpha: ", len(alpha), "Background: ", len(background))
             background = cv2.multiply((1.0 - alpha), background)
             foreground = foreground[sourceYOffset : sourceYOffset + postResizeRows - sourceYEndOffset, 0 : postResizeCols]
             outImage = cv2.add(foreground, background)
