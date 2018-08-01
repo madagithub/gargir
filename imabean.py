@@ -3,8 +3,7 @@ import cv2
 import random
 import sys
 import json
-
-#from ffpyplayer.player import MediaPlayer
+import pyglet
 
 RUN_MODE = 'run'
 TEST_MODE = 'test'
@@ -29,15 +28,26 @@ SCROLLER_END_X = SCREEN_WIDTH - SCROLLER_MARGIN - SCROLLER_WIDTH
 FIRST_RECT_INDEX = 0
 SECOND_RECT_INDEX = 1
 
-FIRST_FACE_X = 427
-FIRST_FACE_Y = 137
-FIRST_FACE_WIDTH = 85
-FIRST_FACE_HEIGHT = 124
+# FIRST_FACE_X = 427
+# FIRST_FACE_Y = 137
+# FIRST_FACE_WIDTH = 85
+# FIRST_FACE_HEIGHT = 124
 
-SECOND_FACE_X = 114
-SECOND_FACE_Y = 284
+# SECOND_FACE_X = 114
+# SECOND_FACE_Y = 284
+# SECOND_FACE_WIDTH = 100
+# SECOND_FACE_HEIGHT = 138
+
+FIRST_FACE_X = 420#440
+FIRST_FACE_Y = 120#140
+FIRST_FACE_WIDTH = 120
+FIRST_FACE_HEIGHT = 160#120
+
+SECOND_FACE_X = 100
+SECOND_FACE_Y = 280
 SECOND_FACE_WIDTH = 100
-SECOND_FACE_HEIGHT = 138
+SECOND_FACE_HEIGHT = 140
+
 
 def resizeNoStretch(image, newWidth, newHeight):
     oldRows, oldCols = image.shape[:2]
@@ -62,7 +72,6 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
 
     #Draw crop from camera
     if (face is not None):
-
         # First, resize face to designated rectangle size, get new size
         stretchedFace = cv2.resize(face, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
         rows, cols = stretchedFace.shape[:2]
@@ -459,16 +468,12 @@ dragStartX = 0
 dragStartScrollerX = SCROLLER_START_X
 editorMode = NONE
 
-cap = cv2.VideoCapture('./master_converted.mp4')
-
-player = None
-if isRunMode:
-    pass
-    #player = MediaPlayer('./master_converted.mp4')
+cap = cv2.VideoCapture('./gargir.mov')
 
 if scriptMode == RUN_MODE:
     camera = cv2.VideoCapture(0)
 framesNum = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+print(framesNum)
 
 if scriptMode == TEST_MODE:
     cameraImage = cv2.imread('./camera-stream.jpg')
@@ -484,9 +489,9 @@ window_name = 'projector'
 if isRunMode():
     cv2.namedWindow(window_name, cv2.WND_PROP_FULLSCREEN)
 else:
-    cv2.namedWindow(window_name)
+    cv2.namedWindow(window_name, cv2.WND_PROP_FULLSCREEN)
+    cv2.setMouseCallback(window_name, onMouseMove)
 cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-cv2.setMouseCallback(window_name, onMouseMove)
 
 currRectIndex = 0
 currFrameIndex = 0
@@ -494,14 +499,32 @@ frameScrollerX = float(SCROLLER_START_X)
 
 nextFrame = True
 
+player = None
+if isRunMode():
+    sound = pyglet.media.load('sound.ogg')
+    player = pyglet.media.Player()
+    player.queue(sound)
+    player.play()
+    #player = MediaPlayer(filename='./sound.ogg', ff_opts={'vn': True, 'loop': 0})
 while True:
     if scriptMode == EDIT_MODE:
         cap.set(cv2.CAP_PROP_POS_FRAMES, currFrameIndex)
 
     ret, frame = cap.read()
 
+    if ret == False:
+        if player is not None:
+            player.seek(0)
+            player.play()
+        currFrameIndex = 0
+        cap.set(cv2.CAP_PROP_POS_FRAMES, currFrameIndex)
+        ret, frame = cap.read()       
+
+    e1 = cv2.getTickCount()
+
     if player is not None:
-        player.get_frame()
+        pass
+        #player.get_frame()
 
     if scriptMode == RUN_MODE:
         retCamera, cameraImage = camera.read()
@@ -517,18 +540,25 @@ while True:
 
     cv2.imshow(window_name, frame)
 
-    k = cv2.waitKey(33)
+    e2 = cv2.getTickCount()
+    time = int((e2 - e1)/ cv2.getTickFrequency() * 1000)
+    waitTime = 28 - time
+    if waitTime <= 0:
+        print (waitTime)
+        waitTime = 1
+
+    k = cv2.waitKey(waitTime)
     if k==27: # Esc key to stop
         break
 
     if scriptMode == EDIT_MODE:
         if k == -1:  # normally -1 returned, so don't print it
             continue
-        elif k == 2: # Left key
+        elif k == ord('u'): # Left key
             if currFrameIndex > 0:
                 currFrameIndex = currFrameIndex - 1
                 setScrollerByFrame(currFrameIndex)
-        elif k == 3: # Right key
+        elif k == ord('i'): # Right key
             if currFrameIndex < framesNum - 1:
                 currFrameIndex = currFrameIndex + 1
                 setScrollerByFrame(currFrameIndex)
@@ -581,6 +611,9 @@ while True:
     if isRunMode():
         currFrameIndex = currFrameIndex + 1
         if currFrameIndex >= framesNum:
+            if player is not None:
+                player.seek(0)
+                player.play()
             currFrameIndex = 0
             cap.set(cv2.CAP_PROP_POS_FRAMES, currFrameIndex)
 
