@@ -81,10 +81,11 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
         alpha = cv2.resize(alpha, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
 
         # Resize both face and mask to allow rotation without cropping
-        stretchedFace = resizeNoStretch(stretchedFace, int(cols * 3), int(rows * 3))
-        alpha = resizeNoStretch(alpha, int(cols * 3), int(rows * 3))
-        postResizeRows = int(rows * 3)
-        postResizeCols = int(cols * 3)
+        halfDiagonalSize = np.hypot(cols, rows)
+        postResizeRows = int(halfDiagonalSize)
+        postResizeCols = int(halfDiagonalSize)
+        stretchedFace = resizeNoStretch(stretchedFace, postResizeCols, postResizeRows)
+        alpha = resizeNoStretch(alpha, postResizeCols, postResizeRows)
 
         # Rotate face to correct rotation
         M = cv2.getRotationMatrix2D((postResizeCols/2,postResizeRows/2), rectKeyFrame['position']['rotation'] / (np.pi * 2) * 360, 1)
