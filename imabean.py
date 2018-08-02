@@ -38,6 +38,7 @@ SECOND_FACE_Y = 280
 SECOND_FACE_WIDTH = 100
 SECOND_FACE_HEIGHT = 140
 
+OUTSIDE_OF_SCREEN = -1000
 
 def resizeNoStretch(image, newWidth, newHeight):
     oldRows, oldCols = image.shape[:2]
@@ -183,6 +184,29 @@ def drawFrameFaceRect(frame, rectIndex, color, face):
 
         if (rect is not None):
             drawFaceRect(frame, rect, list(map(lambda x: x/2, color)), face)
+
+def copyFromNextKeyFrame():
+    global currRectIndex
+
+    copyFromKeyFrame(getNextKeyFrame(currRectIndex))
+
+def copyFromLastKeyFrame():
+    global currRectIndex
+
+    copyFromKeyFrame(getLastKeyFrame(currRectIndex))
+
+def copyFromKeyFrame(keyFrameIndex):
+    global overlayHash, currFrameIndex
+
+    sourceKeyFrame = overlayHash.get(getKey(currRectIndex, keyFrameIndex))
+    currKeyFrame = overlayHash.get(getKey(currRectIndex, currFrameIndex))
+
+    if (currKeyFrame is not None and sourceKeyFrame is not None):
+        currKeyFrame['position']['x'] = sourceKeyFrame['position']['x']
+        currKeyFrame['position']['y'] = sourceKeyFrame['position']['y']
+        currKeyFrame['position']['rotation'] = sourceKeyFrame['position']['rotation']
+        currKeyFrame['size']['width'] = sourceKeyFrame['size']['width']
+        currKeyFrame['size']['height'] = sourceKeyFrame['size']['height']
 
 def convertToKeyFrame():
     global overlayHash, currRectIndex, currFrameIndex, keyFrames
@@ -560,6 +584,10 @@ while True:
             setScrollerByFrame(currFrameIndex)
         elif k == ord('K'):
             convertToKeyFrame()
+        elif k == ord('M'):
+            copyFromNextKeyFrame()
+        elif k == ord('N'):
+            copyFromLastKeyFrame()
         elif k == ord('c'):
             currRectIndex = (currRectIndex + 1) % 2
         elif k == ord('p'):
@@ -588,6 +616,12 @@ while True:
                 keyFrame['size']['height'] -= 1
             elif k == ord('H'):
                 keyFrame['size']['height'] += 1
+            elif k == ord('E'):
+                keyFrame['position']['x'] = OUTSIDE_OF_SCREEN
+                keyFrame['position']['y'] = OUTSIDE_OF_SCREEN
+            elif k == ord('e'):
+                keyFrame['position']['x'] = SCREEN_WIDTH // 2
+                keyFrame['position']['y'] = SCREEN_HEIGHT // 2
             elif k == ord('r'):
                 keyFrame['position']['rotation'] -= (2 * np.pi / 360.0)
             elif k == ord('R'):
