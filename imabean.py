@@ -202,7 +202,7 @@ def convertToKeyFrame():
     if (keyFrame is None):
         rect = getInterpolatedRect(currRectIndex)
         if (rect is not None):
-            createKeyFrame(rect['position']['x'], rect['position']['y'], rect['size']['width'], rect['size']['height'])
+            createKeyFrame(rect['position']['x'], rect['position']['y'], rect['size']['width'], rect['size']['height'], rect['position']['rotation'])
 
 def deleteCurrentKeyFrame():
     global overlayHash, currFrameIndex, currRectIndex
@@ -246,13 +246,13 @@ def updateFrameScrollerX(x):
 
     setFrameByScroller()
 
-def createKeyFrame(x, y, width, height):
+def createKeyFrame(x, y, width, height, rotation):
     global currRectIndex, currFrameIndex
 
     keyFrame = {
         'rectIndex': currRectIndex,
         'keyFrameIndex': currFrameIndex,
-        'position': {'x': x, 'y': y, 'rotation': 0},
+        'position': {'x': x, 'y': y, 'rotation': rotation},
         'size': {'width': width, 'height': height}
     }
 
@@ -274,7 +274,7 @@ def handleDragRectStart(x, y):
 
     key = getKey(currRectIndex, currFrameIndex)
     if overlayHash.get(key) is None:
-        createKeyFrame(startRectX, startRectY, pointedRect.width, pointedRect.height)
+        createKeyFrame(startRectX, startRectY, pointedRect.width, pointedRect.height, pointedRect.rotation)
 
 def handleDragRectEnd(x, y):
     global startX, startY, startRectX, startRectY, currRectIndex, currFrameIndex, overlayHash
@@ -296,7 +296,7 @@ def handleDrawRectStart(x, y):
         overlayHash.get(key)['position']['y'] = y;
         overlayHash.get(key)['position']['rotation'] = 0
     else:
-        createKeyFrame(x, y, 1, 1)
+        createKeyFrame(x, y, 1, 1, 0)
 
 def handleDrawRectEnd(x, y):
     global startX, startY, currRectIndex, currFrameIndex, overlayHash
