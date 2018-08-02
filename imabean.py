@@ -466,7 +466,7 @@ if scriptMode == RUN_MODE:
 framesNum = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 print(framesNum)
 
-if scriptMode == TEST_MODE:
+if scriptMode != RUN_MODE:
     cameraImage = cv2.imread('./camera-stream.jpg')
 
 alpha1 = cv2.imread('first-alpha-mask.png').astype(np.float)
