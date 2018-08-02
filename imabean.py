@@ -70,7 +70,7 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
     if scriptMode != RUN_MODE:
         drawRotatedRect(frame, start, end, color, 3, rectKeyFrame['position']['rotation'])
 
-    #Draw crop from camera
+    # Draw crop from camera
     if (face is not None):
         # First, resize face to designated rectangle size, get new size
         stretchedFace = cv2.resize(face, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
