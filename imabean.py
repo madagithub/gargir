@@ -28,20 +28,10 @@ SCROLLER_END_X = SCREEN_WIDTH - SCROLLER_MARGIN - SCROLLER_WIDTH
 FIRST_RECT_INDEX = 0
 SECOND_RECT_INDEX = 1
 
-# FIRST_FACE_X = 427
-# FIRST_FACE_Y = 137
-# FIRST_FACE_WIDTH = 85
-# FIRST_FACE_HEIGHT = 124
-
-# SECOND_FACE_X = 114
-# SECOND_FACE_Y = 284
-# SECOND_FACE_WIDTH = 100
-# SECOND_FACE_HEIGHT = 138
-
-FIRST_FACE_X = 420#440
-FIRST_FACE_Y = 120#140
+FIRST_FACE_X = 420
+FIRST_FACE_Y = 120
 FIRST_FACE_WIDTH = 120
-FIRST_FACE_HEIGHT = 160#120
+FIRST_FACE_HEIGHT = 160
 
 SECOND_FACE_X = 100
 SECOND_FACE_Y = 280
@@ -506,7 +496,6 @@ if isRunMode():
     player = pyglet.media.Player()
     player.queue(sound)
     player.play()
-    #player = MediaPlayer(filename='./sound.ogg', ff_opts={'vn': True, 'loop': 0})
 while True:
     if scriptMode == EDIT_MODE:
         cap.set(cv2.CAP_PROP_POS_FRAMES, currFrameIndex)
