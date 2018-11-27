@@ -28,15 +28,15 @@ SCROLLER_END_X = SCREEN_WIDTH - SCROLLER_MARGIN - SCROLLER_WIDTH
 FIRST_RECT_INDEX = 0
 SECOND_RECT_INDEX = 1
 
-FIRST_FACE_X = 420
-FIRST_FACE_Y = 120
-FIRST_FACE_WIDTH = 120
-FIRST_FACE_HEIGHT = 160
+FIRST_FACE_X = 433
+FIRST_FACE_Y = 132
+FIRST_FACE_WIDTH = 87
+FIRST_FACE_HEIGHT = 142
 
-SECOND_FACE_X = 100
-SECOND_FACE_Y = 280
-SECOND_FACE_WIDTH = 100
-SECOND_FACE_HEIGHT = 140
+SECOND_FACE_X = 111
+SECOND_FACE_Y = 284
+SECOND_FACE_WIDTH = 85
+SECOND_FACE_HEIGHT = 121
 
 OUTSIDE_OF_SCREEN = -1000
 
@@ -493,8 +493,8 @@ print(framesNum)
 if scriptMode != RUN_MODE:
     cameraImage = cv2.imread('./camera-stream.jpg')
 
-alpha1 = cv2.imread('first-alpha-mask.png').astype(np.float)
-alpha2 = cv2.imread('second-alpha-mask.png').astype(np.float)
+alpha1 = cv2.imread('first-mask-ellipse-0.9.png').astype(np.float)
+alpha2 = cv2.imread('second-mask-ellipse-0.9.png').astype(np.float)
 
 face1 = None
 face2 = None
