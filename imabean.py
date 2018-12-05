@@ -38,6 +38,11 @@ SECOND_FACE_Y = 284
 SECOND_FACE_WIDTH = 85
 SECOND_FACE_HEIGHT = 121
 
+MAX_MASK_VALUE = 0.95
+MIN_MASK_VALUE = 0.5
+MASK_STEP_SIZE = 0.05
+DEFAULT_MASK_VALUE = '0.5'
+
 OUTSIDE_OF_SCREEN = -1000
 
 def resizeNoStretch(image, newWidth, newHeight):
@@ -53,7 +58,7 @@ def resizeNoStretch(image, newWidth, newHeight):
     return resizeTarget
 
 def drawFaceRect(frame, rectKeyFrame, color, face):
-    global alpha1, alpha2, scriptMode
+    global alpha1Masks, alpha2Masks, scriptMode
 
     start = (int(rectKeyFrame['position']['x']), int(rectKeyFrame['position']['y']))
     end = (int(rectKeyFrame['position']['x'] + rectKeyFrame['size']['width']), int(rectKeyFrame['position']['y'] + rectKeyFrame['size']['height']))
@@ -68,7 +73,8 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
         rows, cols = stretchedFace.shape[:2]
 
         # Now, load alpha mask, and resize it to same size
-        alpha = alpha1 if rectKeyFrame['rectIndex'] == 0 else alpha2
+        print (str(rectKeyFrame))
+        alpha = (alpha1Masks if rectKeyFrame['rectIndex'] == 0 else alpha2Masks)[rectKeyFrame['mask'] if 'mask' in rectKeyFrame else DEFAULT_MASK_VALUE]
         alpha = cv2.resize(alpha, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
 
         # Resize both face and mask to allow rotation without cropping
@@ -144,7 +150,7 @@ def interpolateValues(first, second, ratio):
 def interpolateRects(firstRect, firstFrame, secondRect, secondFrame, currFrame):
     framesDiff = secondFrame - firstFrame
     ratio = float(currFrame - firstFrame) / framesDiff;
-    return {
+    interpolatedRect =  {
         'rectIndex': firstRect['rectIndex'],
         'position': {
             'x': interpolateValues(firstRect['position']['x'], secondRect['position']['x'], ratio), 
@@ -156,6 +162,11 @@ def interpolateRects(firstRect, firstFrame, secondRect, secondFrame, currFrame):
             'height': interpolateValues(firstRect['size']['height'], secondRect['size']['height'], ratio)
         }
     }
+
+    if 'mask' in firstRect:
+        interpolatedRect['mask'] = firstRect['mask']
+
+    return interpolatedRect
 
 def getInterpolatedRect(rectIndex):
     global overlayHash, currFrameIndex, scriptMode
@@ -207,6 +218,7 @@ def copyFromKeyFrame(keyFrameIndex):
         currKeyFrame['position']['rotation'] = sourceKeyFrame['position']['rotation']
         currKeyFrame['size']['width'] = sourceKeyFrame['size']['width']
         currKeyFrame['size']['height'] = sourceKeyFrame['size']['height']
+        currKeyFrame['mask'] = sourceKeyFrame['mask']
 
 def convertToKeyFrame():
     global overlayHash, currRectIndex, currFrameIndex, keyFrames
@@ -399,8 +411,18 @@ def loadOverlays(overlayDef):
 
     keyFrames = []
     keyFramesHash = {}
+    lastMaskKeyFrame = None
 
     for rectKeyFrame in overlayDef:
+        if 'mask' in rectKeyFrame:
+            lastMaskKeyFrame = rectKeyFrame
+        else:
+            if lastMaskKeyFrame is not None:
+                rectKeyFrame['mask'] = lastMaskKeyFrame['mask']
+
+        if 'mask' in rectKeyFrame:
+            print('Mask: ' + rectKeyFrame['mask'])
+
         overlayHash[getKey(rectKeyFrame['rectIndex'], rectKeyFrame['keyFrameIndex'])] = rectKeyFrame
         if (keyFramesHash.get(rectKeyFrame['keyFrameIndex']) == None):
             keyFrames.append(rectKeyFrame['keyFrameIndex'])
@@ -445,6 +467,16 @@ def drawCurrColor():
     color = (255, 0, 0) if currRectIndex == 0 else (0, 0, 255)
     cv2.circle(frame, (30, 150), 15, color ,3)
 
+    currKeyFrame = overlayHash.get(getKey(currRectIndex, currFrameIndex))
+
+    if currKeyFrame is not None:
+        lastKeyFrame = currKeyFrame
+    else:
+        lastKeyFrame = overlayHash.get(getKey(currRectIndex, getLastKeyFrame(currRectIndex)))
+
+    if lastKeyFrame is not None and 'mask' in lastKeyFrame:
+        cv2.putText(frame, lastKeyFrame['mask'], (60, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 3)
+
 def getFaces():
     global face1, face2
 
@@ -455,6 +487,39 @@ def isRunMode():
     global scriptMode
 
     return (scriptMode == RUN_MODE or scriptMode == TEST_MODE)
+
+def increaseMask(keyFrame):
+    if 'mask' not in keyFrame:
+        keyFrame['mask'] = MIN_MASK_VALUE
+    else:
+        keyFrame['mask'] = float(keyFrame['mask']) + MASK_STEP_SIZE
+
+    if keyFrame['mask'] > MAX_MASK_VALUE:
+        keyFrame['mask'] = MAX_MASK_VALUE
+
+    keyFrame['mask'] = str(round(keyFrame['mask'], 2))
+
+def decreaseMask(keyFrame):
+    if 'mask' not in keyFrame:
+        keyFrame['mask'] = MAX_MASK_VALUE
+    else:
+        keyFrame['mask'] = float(keyFrame['mask']) - MASK_STEP_SIZE
+
+    if keyFrame['mask'] < MIN_MASK_VALUE:
+        keyFrame['mask'] = MIN_MASK_VALUE
+
+    keyFrame['mask'] = str(round(keyFrame['mask'], 2))
+
+def readMasks(prefix):
+    masksByAlpha = {}
+    maskAlpha = MIN_MASK_VALUE
+    while round(maskAlpha, 2) <= MAX_MASK_VALUE:
+        maskAlphaString = str(round(maskAlpha, 2))
+        print ('Reading mask: ' + prefix + maskAlphaString + '.png');
+        masksByAlpha[maskAlphaString] = cv2.imread(prefix + maskAlphaString + '.png').astype(np.float)
+        maskAlpha += MASK_STEP_SIZE
+
+    return masksByAlpha
 
 scriptMode = RUN_MODE
 if (len(sys.argv) == 2):
@@ -493,8 +558,8 @@ print(framesNum)
 if scriptMode != RUN_MODE:
     cameraImage = cv2.imread('./camera-stream.jpg')
 
-alpha1 = cv2.imread('first-mask-ellipse-0.9.png').astype(np.float)
-alpha2 = cv2.imread('second-mask-ellipse-0.9.png').astype(np.float)
+alpha1Masks = readMasks('first-mask-ellipse-')
+alpha2Masks = readMasks('second-mask-ellipse-')
 
 face1 = None
 face2 = None
@@ -626,6 +691,10 @@ while True:
                 keyFrame['position']['rotation'] -= (2 * np.pi / 360.0)
             elif k == ord('R'):
                 keyFrame['position']['rotation'] += (2 * np.pi / 360.0)
+            elif k == ord('a'):
+                increaseMask(keyFrame)
+            elif k == ord('A'):
+                decreaseMask(keyFrame)
 
     else:
         if k == ord('s'):
