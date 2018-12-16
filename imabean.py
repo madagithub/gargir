@@ -73,7 +73,6 @@ def drawFaceRect(frame, rectKeyFrame, color, face):
         rows, cols = stretchedFace.shape[:2]
 
         # Now, load alpha mask, and resize it to same size
-        print (str(rectKeyFrame))
         alpha = (alpha1Masks if rectKeyFrame['rectIndex'] == 0 else alpha2Masks)[rectKeyFrame['mask'] if 'mask' in rectKeyFrame else DEFAULT_MASK_VALUE]
         alpha = cv2.resize(alpha, (int(rectKeyFrame['size']['width']), int(rectKeyFrame['size']['height'])), interpolation = cv2.INTER_AREA)
 
@@ -411,23 +410,30 @@ def loadOverlays(overlayDef):
 
     keyFrames = []
     keyFramesHash = {}
-    lastMaskKeyFrame = None
 
     for rectKeyFrame in overlayDef:
-        if 'mask' in rectKeyFrame:
-            lastMaskKeyFrame = rectKeyFrame
-        else:
-            if lastMaskKeyFrame is not None:
-                rectKeyFrame['mask'] = lastMaskKeyFrame['mask']
-
-        if 'mask' in rectKeyFrame:
-            print('Mask: ' + rectKeyFrame['mask'])
-
         overlayHash[getKey(rectKeyFrame['rectIndex'], rectKeyFrame['keyFrameIndex'])] = rectKeyFrame
         if (keyFramesHash.get(rectKeyFrame['keyFrameIndex']) == None):
             keyFrames.append(rectKeyFrame['keyFrameIndex'])
             keyFramesHash[rectKeyFrame['keyFrameIndex']] = 1
     keyFrames.sort()
+
+    if scriptMode != EDIT_MODE:
+        addMasks()
+
+def addMasks():
+    global overlayHash, keyFrames
+
+    lastMaskKeyFrames = [None, None]
+    for keyFrameIndex in keyFrames:
+        for rectIndex in range(2):
+            rectKeyFrame = overlayHash.get(getKey(rectIndex, keyFrameIndex))
+            if rectKeyFrame is not None:
+                if 'mask' in rectKeyFrame:
+                    lastMaskKeyFrames[rectIndex] = rectKeyFrame
+                else:
+                    if lastMaskKeyFrames[rectIndex] is not None:
+                        rectKeyFrame['mask'] = lastMaskKeyFrames[rectIndex]['mask']
 
 def setFrameToNextKeyFrame():
     global currFrameIndex, keyFrames
@@ -515,7 +521,6 @@ def readMasks(prefix):
     maskAlpha = MIN_MASK_VALUE
     while round(maskAlpha, 2) <= MAX_MASK_VALUE:
         maskAlphaString = str(round(maskAlpha, 2))
-        print ('Reading mask: ' + prefix + maskAlphaString + '.png');
         masksByAlpha[maskAlphaString] = cv2.imread(prefix + maskAlphaString + '.png').astype(np.float)
         maskAlpha += MASK_STEP_SIZE
 
