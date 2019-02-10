@@ -4,10 +4,12 @@ import random
 import sys
 import json
 import pyglet
+import dlib
 
 RUN_MODE = 'run'
 TEST_MODE = 'test'
 EDIT_MODE = 'edit'
+CALIBRATE_MODE = 'camera'
 
 NONE = 0
 DRAGGING_FRAME = 1
@@ -467,6 +469,13 @@ def setFrameToLastKeyFrame():
     if (lastKeyFrame != None):
         currFrameIndex = lastKeyFrame
 
+def drawElipse():
+    global frame
+
+    cv2.rectangle(frame, (FIRST_FACE_X, FIRST_FACE_Y), (FIRST_FACE_X + FIRST_FACE_WIDTH, FIRST_FACE_Y + FIRST_FACE_HEIGHT), (0, 0, 255))
+    cv2.rectangle(frame, (SECOND_FACE_X, SECOND_FACE_Y), (SECOND_FACE_X + SECOND_FACE_WIDTH, SECOND_FACE_Y + SECOND_FACE_HEIGHT), (255, 0, 0))
+    #cv2.ellipse(frame, {'center': (FIRST_FACE_X, FIRST_FACE_Y), 'size': (FIRST_FACE_WIDTH, FIRST_FACE_HEIGHT), 'angle': 0}, (255, 0, 0), 2)
+
 def drawCurrColor():
     global currRectIndex, frame
 
@@ -526,6 +535,19 @@ def readMasks(prefix):
 
     return masksByAlpha
 
+def isFace(frame, index):
+    global lastFaceResult
+
+    if faceDetectorFrameCounter >= 60:
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        
+        #face_rects = detector(gray, 0)
+        face_rects = face_cascade.detectMultiScale(gray)
+        lastFaceResult[index] = len(face_rects)
+
+    return lastFaceResult[index]
+
 scriptMode = RUN_MODE
 if (len(sys.argv) == 2):
     scriptMode = sys.argv[1]
@@ -541,6 +563,9 @@ pointedRect = None
 overlayHash = {}
 keyFrames = []
 
+faceDetectorFrameCounter = 0
+lastFaceResult = [False, False]
+
 try:
     with open('imabean.json') as jsonFile:  
         overlayDef = json.load(jsonFile)
@@ -555,23 +580,26 @@ editorMode = NONE
 
 cap = cv2.VideoCapture('./gargir.mov')
 
-if scriptMode == RUN_MODE:
+if scriptMode == RUN_MODE or scriptMode == CALIBRATE_MODE:
     camera = cv2.VideoCapture(0)
 framesNum = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 print(framesNum)
 
-if scriptMode != RUN_MODE:
+if scriptMode != RUN_MODE and scriptMode != CALIBRATE_MODE:
     cameraImage = cv2.imread('./camera-stream.jpg')
 
 alpha1Masks = readMasks('first-mask-ellipse-')
 alpha2Masks = readMasks('second-mask-ellipse-')
+
+detector = dlib.get_frontal_face_detector()
+face_cascade = cv2.CascadeClassifier('./haarcascade_eye.xml')
 
 face1 = None
 face2 = None
 
 window_name = 'projector'
 
-if isRunMode():
+if isRunMode() or scriptMode == CALIBRATE_MODE:
     cv2.namedWindow(window_name, cv2.WND_PROP_FULLSCREEN)
 else:
     cv2.namedWindow(window_name, cv2.WND_PROP_FULLSCREEN)
@@ -585,11 +613,12 @@ frameScrollerX = float(SCROLLER_START_X)
 nextFrame = True
 
 player = None
-if isRunMode():
+if isRunMode() and scriptMode != CALIBRATE_MODE:
     sound = pyglet.media.load('sound.ogg')
     player = pyglet.media.Player()
     player.queue(sound)
     player.play()
+
 while True:
     if scriptMode == EDIT_MODE:
         cap.set(cv2.CAP_PROP_POS_FRAMES, currFrameIndex)
@@ -610,7 +639,7 @@ while True:
         pass
         #player.get_frame()
 
-    if scriptMode == RUN_MODE:
+    if scriptMode == RUN_MODE or scriptMode == CALIBRATE_MODE:
         retCamera, cameraImage = camera.read()
 
     if scriptMode == EDIT_MODE:
@@ -619,8 +648,21 @@ while True:
 
     if isRunMode():
         getFaces()
-        drawFrameFaceRect(frame, FIRST_RECT_INDEX, (255, 0, 0), face1)
-        drawFrameFaceRect(frame, SECOND_RECT_INDEX, (0, 0, 255), face2)
+
+        faceDetectorFrameCounter += 1;
+
+        if isFace(face1, FIRST_RECT_INDEX):
+            drawFrameFaceRect(frame, FIRST_RECT_INDEX, (255, 0, 0), face1)
+        
+        if isFace(face2, SECOND_RECT_INDEX):
+            drawFrameFaceRect(frame, SECOND_RECT_INDEX, (0, 0, 255), face2)
+
+        if (faceDetectorFrameCounter >= 60):
+            faceDetectorFrameCounter = 0
+
+    if scriptMode == CALIBRATE_MODE:
+        frame = cameraImage
+        drawElipse()
 
     cv2.imshow(window_name, frame)
 
