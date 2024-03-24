@@ -583,7 +583,7 @@ dragStartX = 0
 dragStartScrollerX = SCROLLER_START_X
 editorMode = NONE
 
-cap = cv2.VideoCapture('./master_converted.mp4')
+cap = cv2.VideoCapture('./gargir.mov')
 
 if scriptMode == RUN_MODE or scriptMode == CALIBRATE_MODE:
     camera = cv2.VideoCapture(0)
@@ -670,7 +670,7 @@ while True:
 
     e2 = cv2.getTickCount()
     time = int((e2 - e1)/ cv2.getTickFrequency() * 1000)
-    waitTime = 28 - time
+    waitTime = 30 - time
     if waitTime <= 0:
         print (waitTime)
         waitTime = 1
