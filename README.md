@@ -120,24 +120,42 @@ These keys allow navigating through video frames and key frames.
 ### Key Frames Editting
 
 **'K'**: Create a key frame on current video frame (if it does not exist).
+
 **'M'**: Create a key frame on current video frame and make its data the same as the next key frame defined. Useful to get same position easily.
+
 **'N'**: Create a key frame on current video frame and make its data the same as the previuos key frame defined. Useful to get same position easily.
+
 **'d'**: Delete current key frame (if you are on one).
 
+
 **'c'**: Change the face you are working on.
+
 **'x'**: Add one to current rectangle's x.
+
 **'X'**: Subtract one from current rectangle's x.
+
 **'y'**: Add one to current rectangle's y.
+
 **'Y'**: Subtract one from current rectangle's y.
+
 **'w'**: Add one to current rectangle's width.
+
 **'W'**: Subtract one from current rectangle's width.
+
 **'h'**: Add one to current rectangle's height.
+
 **'H'**: Subtract one from current rectangle's height.
+
 **'r'**: Add one degree to current rectangle's rotation.
+
 **'R'**: Subtract one degree from current rectangle's rotation.
+
 **'a'**: Add 0.5 to current mask's opacity.
+
 **'A'**: Subtract 0.5 from current mask's opacity.
+
 **'E'**: Moves rectangle position to out of screen (to eliminate face from current frame, putting it in -1000/-1000).
+
 **'e'**: Moves rectangle position to center of screen (used mostly to remove from out of screen position).
 
 **'S'**: Overwrite imabean.json configuration file with all changes up to now.
