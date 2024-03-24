@@ -3,8 +3,10 @@ import cv2
 import random
 import sys
 import json
-import pyglet
 import dlib
+
+import pygame
+from pygame.locals import *
 
 RUN_MODE = 'run'
 TEST_MODE = 'test'
@@ -566,6 +568,9 @@ keyFrames = []
 faceDetectorFrameCounter = 0
 lastFaceResult = [False, False]
 
+pygame.init()
+pygame.mouse.set_visible(False)
+
 try:
     with open('imabean.json') as jsonFile:  
         overlayDef = json.load(jsonFile)
@@ -578,7 +583,7 @@ dragStartX = 0
 dragStartScrollerX = SCROLLER_START_X
 editorMode = NONE
 
-cap = cv2.VideoCapture('./gargir.mov')
+cap = cv2.VideoCapture('./master_converted.mp4')
 
 if scriptMode == RUN_MODE or scriptMode == CALIBRATE_MODE:
     camera = cv2.VideoCapture(0)
@@ -612,12 +617,10 @@ frameScrollerX = float(SCROLLER_START_X)
 
 nextFrame = True
 
-player = None
+sound = None
 if isRunMode() and scriptMode != CALIBRATE_MODE:
-    sound = pyglet.media.load('sound.ogg')
-    player = pyglet.media.Player()
-    player.queue(sound)
-    player.play()
+    sound = pygame.mixer.Sound('sound.ogg')
+    sound.play()
 
 while True:
     if scriptMode == EDIT_MODE:
@@ -626,16 +629,15 @@ while True:
     ret, frame = cap.read()
 
     if ret == False:
-        if player is not None:
-            player.seek(0)
-            player.play()
+        if sound is not None:
+            sound.play()
         currFrameIndex = 0
         cap.set(cv2.CAP_PROP_POS_FRAMES, currFrameIndex)
         ret, frame = cap.read()       
 
     e1 = cv2.getTickCount()
 
-    if player is not None:
+    if sound is not None:
         pass
         #player.get_frame()
 
@@ -751,9 +753,8 @@ while True:
     if isRunMode():
         currFrameIndex = currFrameIndex + 1
         if currFrameIndex >= framesNum:
-            if player is not None:
-                player.seek(0)
-                player.play()
+            if sound is not None:
+                sound.play()
             currFrameIndex = 0
             cap.set(cv2.CAP_PROP_POS_FRAMES, currFrameIndex)
 
