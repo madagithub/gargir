@@ -202,14 +202,16 @@ A specific issue with this exhibit is to match the audio and the video.
 The audio is played using pygame, but the rate of the video maybe a bit slower, as processing time is needed to adjust the faces from live camera.
 
 To solve this issue, the game times the amount of time passed from the beginning of the live camera processings, and then waits the additional frame time.
-Frame time is assumed to be 28 miliseconds, but that may change in other videos, or based on specific computer or video parameters.
-So, if necessary,  you should adjust the code and update the 28 number with an appropriate one, based on the number of miliseconds each frame should take.
+Frame time is assumed to be 30 miliseconds, but that may change in other videos, or based on specific computer or video parameters.
+So, if necessary, you should adjust the code and update the 28 number with an appropriate one, based on the number of miliseconds each frame should take.
 
 You will find this in line 673 of the imabean.py script:
 
 ```
-waitTime = 28 - time
+waitTime = 30 - time
 ```
+
+In the last exhibit, due to the processing time taking too long, 28 was used instead of 30 to have the sound match the video.
 
 ## Mask Creation Scripts
 
