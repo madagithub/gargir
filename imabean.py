@@ -670,7 +670,7 @@ while True:
 
     e2 = cv2.getTickCount()
     time = int((e2 - e1)/ cv2.getTickFrequency() * 1000)
-    waitTime = 30 - time
+    waitTime = 33 - time
     if waitTime <= 0:
         print (waitTime)
         waitTime = 1
